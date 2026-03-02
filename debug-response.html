@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<!--[if lt IE 7]> <html lang="ru" class="no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
+<!--[if IE 7]>    <html lang="ru" class="no-js lt-ie9 lt-ie8"> <![endif]-->
+<!--[if IE 8]>    <html lang="ru" class="no-js lt-ie9"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="ru" class="no-js"> <!--<![endif]-->
+<head>
+            <meta charset="UTF-8" />
+<link href="https://chamilo.org/chamilo-lms/" rel="help" />
+<link href="https://chamilo.org/the-association/" rel="author" />
+<link href="https://www.gnu.org/licenses/gpl-3.0.en.html" rel="license" />
+<!-- Force latest IE rendering engine or ChromeFrame if installed -->
+<!--[if IE]>
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+<![endif]-->
+
+<link rel="icon" href="http://192.168.8.179/chamilo/web/css/themes/chamilo/images/favicon.png" type="image/png" />
+<link rel="apple-touch-icon" href="http://192.168.8.179/chamilo/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="generator" content="Chamilo 1" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Organisation - My campus - test - Управление вопрос/ответ</title>
+
+<link href="http://192.168.8.179/chamilo/web/assets/fontawesome/css/font-awesome.min.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/web/assets/jquery-ui/themes/smoothness/theme.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/web/assets/jquery-ui/themes/smoothness/jquery-ui.min.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/web/assets/mediaelement/build/mediaelementplayer.min.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/web/assets/jqueryui-timepicker-addon/dist/jquery-ui-timepicker-addon.min.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/web/assets/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/web/assets/jquery.scrollbar/jquery.scrollbar.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/web/assets/bootstrap-daterangepicker/daterangepicker.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/web/assets/bootstrap-select/dist/css/bootstrap-select.min.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/web/assets/select2/dist/css/select2.min.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/web/assets/flag-icon-css/css/flag-icon.min.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/main/inc/lib/javascript/chosen/chosen.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/main/inc/lib/javascript/chat/css/chat.css" rel="stylesheet" media="screen" type="text/css" />
+
+<script src="http://192.168.8.179/chamilo/web/assets/modernizr/modernizr.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/jquery/dist/jquery.min.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/jquery-ui/jquery-ui.min.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/jquery-ui/ui/minified/i18n/datepicker-ru.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/jqueryui-touch-punch/jquery.ui.touch-punch.min.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/moment/min/moment-with-locales.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/bootstrap-daterangepicker/daterangepicker.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/jquery-timeago/jquery.timeago.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/mediaelement/build/mediaelement-and-player.min.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/jqueryui-timepicker-addon/dist/jquery-ui-timepicker-addon.min.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/jqueryui-timepicker-addon/dist/i18n/jquery-ui-timepicker-ru.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/image-map-resizer/js/imageMapResizer.min.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/jquery.scrollbar/jquery.scrollbar.min.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/readmore-js/readmore.min.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/bootstrap-select/dist/js/bootstrap-select.min.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/bootstrap-select/dist/js/i18n/defaults-ru_RU.min.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/select2/dist/js/select2.min.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/select2/dist/js/i18n/ru.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/js-cookie/src/js.cookie.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/linkifyjs/linkify.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/linkifyjs/linkify-jquery.js"></script>
+<script src="http://192.168.8.179/chamilo/web/assets/ckeditor/ckeditor.js"></script>
+<script src="http://192.168.8.179/chamilo/main/inc/lib/javascript/chosen/chosen.jquery.min.js"></script>
+<script src="http://192.168.8.179/chamilo/main/inc/lib/javascript/mediaelement/plugins/markersrolls/markersrolls.min.js"></script>
+<script src="http://192.168.8.179/chamilo/main/inc/lib/javascript/chat/js/chat.js"></script>
+
+<script>var _p = {
+    "web": "http:\/\/192.168.8.179\/chamilo\/",
+    "web_url": "http:\/\/192.168.8.179\/chamilo\/web\/",
+    "web_relative": "\/",
+    "web_course": "http:\/\/192.168.8.179\/chamilo\/courses\/",
+    "web_main": "http:\/\/192.168.8.179\/chamilo\/main\/",
+    "web_css": "http:\/\/192.168.8.179\/chamilo\/web\/css\/",
+    "web_css_theme": "http:\/\/192.168.8.179\/chamilo\/web\/css\/themes\/chamilo\/",
+    "web_ajax": "http:\/\/192.168.8.179\/chamilo\/main\/inc\/ajax\/",
+    "web_img": "http:\/\/192.168.8.179\/chamilo\/main\/img\/",
+    "web_plugin": "http:\/\/192.168.8.179\/chamilo\/plugin\/",
+    "web_lib": "http:\/\/192.168.8.179\/chamilo\/main\/inc\/lib\/",
+    "web_upload": "http:\/\/192.168.8.179\/chamilo\/app\/upload\/",
+    "web_self": "\/chamilo\/main\/exercise\/admin.php",
+    "self_basename": "admin.php",
+    "web_query_vars": "cidReq=TEST&amp;amp;exerciseId=30&amp;amp;newQuestion=yes&amp;amp;answerType=1",
+    "web_self_query_vars": "\/chamilo\/main\/exercise\/admin.php?cidReq=TEST&amp;amp;exerciseId=30&amp;amp;newQuestion=yes&amp;amp;answerType=1",
+    "web_cid_query": "cidReq=TEST&id_session=0&gidReq=0&gradebook=0&origin=",
+    "web_rel_code": "\/main\/"
+}</script><script src="http://192.168.8.179/chamilo/main/inc/lib/javascript/jqueryui-touch-punch/jquery.ui.touch-punch.min.js"></script>
+
+<script src="http://192.168.8.179/chamilo/main/inc/lib/javascript/jquery.jsPlumb.all.js"></script>
+
+<script>
+
+var DraggableAnswer = {
+    gallery: null,
+    trash: null,
+    deleteItem: function (item, insertHere) {
+        if (insertHere.find(".exercise-draggable-answer-option").length > 0) {
+            return false;
+        }
+
+        item.fadeOut(function () {
+            var $list = $('ul', insertHere).length
+                ? $('ul', insertHere)
+                : $('<ul>').addClass('gallery list-unstyled').appendTo(insertHere);
+
+            var droppedId = item.attr('id'),
+                dropedOnId = insertHere.attr('id'),
+                originSelectId = 'window_' + droppedId + '_select',
+                value = dropedOnId.split('_')[2];
+
+            $('#' + originSelectId + ' option')
+                .filter(function (index) {
+                    var position = insertHere.prop('id').split('_')[2];
+
+                    return index === parseInt(position);
+                })
+                .prop("selected", true);
+
+            item.appendTo($list).fadeIn();
+        });
+    },
+    recycleItem: function (item) {
+        var droppedId = item.attr('id'),
+            originSelectId = 'window_' + droppedId + '_select',
+            idParts = droppedId.split('_'),
+            questionId = parseInt(idParts[0]) || 0;
+
+        if (!questionId) {
+            return;
+        }
+
+        item.fadeOut(function () {
+            item
+                .appendTo(DraggableAnswer.gallery.filter('[data-question="' + questionId + '"]'))
+                .fadeIn();
+        });
+
+        $('#' + originSelectId + ' option').prop('selected', false);
+        $('#' + originSelectId + ' option:first').prop('selected', true);
+    },
+    init: function (gallery, trash) {
+        this.gallery = gallery;
+        this.trash = trash;
+
+        $("li.touch-items", DraggableAnswer.gallery).draggable({
+            revert: "invalid",
+            containment: "document",
+            helper: "clone",
+            cursor: "move"
+        });
+
+        DraggableAnswer.trash.droppable({
+            accept: ".exercise-draggable-answer > li.touch-items",
+            tolerance: "pointer",
+            drop: function (e, ui) {
+                DraggableAnswer.deleteItem(ui.draggable, $(this));
+            }
+        });
+
+        DraggableAnswer.gallery.droppable({
+            tolerance: "pointer",
+            drop: function (e, ui) {
+                DraggableAnswer.recycleItem(ui.draggable, $(this));
+            }
+        });
+    }
+};
+
+var MatchingDraggable = {
+    colorDestination: '#316B31',
+    curviness: 0,
+    connectorType: 'Straight',
+    initialized: false,
+    init: function (questionId) {
+        var windowQuestionSelector = '.window' + questionId + '_question',
+            countConnections = $(windowQuestionSelector).length,
+            colorArray = [],
+            colorArrayDestination = [];
+
+        if (countConnections > 0) {
+            colorArray = $.xcolor.analogous("#da0", countConnections);
+            colorArrayDestination = $.xcolor.analogous("#51a351", countConnections);
+        } else {
+            colorArray = $.xcolor.analogous("#da0", 10);
+            colorArrayDestination = $.xcolor.analogous("#51a351", 10);
+        }
+
+        jsPlumb.importDefaults({
+            DragOptions: {cursor: 'pointer', zIndex: 2000},
+            PaintStyle: {strokeStyle: '#000'},
+            EndpointStyle: {strokeStyle: '#316b31'},
+            Endpoint: 'Rectangle',
+            Anchors: ['TopCenter', 'TopCenter']
+        });
+
+        var exampleDropOptions = {
+            tolerance: 'touch',
+            hoverClass: 'dropHover',
+            activeClass: 'dragActive'
+        };
+
+        var destinationEndPoint = {
+            endpoint: ["Dot", {radius: 15}],
+            paintStyle: {fillStyle: MatchingDraggable.colorDestination},
+            isSource: false,
+            connectorStyle: {strokeStyle: MatchingDraggable.colorDestination, lineWidth: 8},
+            connector: [
+                MatchingDraggable.connectorType,
+                {curviness: MatchingDraggable.curviness}
+            ],
+            maxConnections: 1000,
+            isTarget: true,
+            dropOptions: exampleDropOptions,
+            beforeDrop: function (params) {
+                jsPlumb.select({source: params.sourceId}).each(function (connection) {
+                    jsPlumb.detach(connection);
+                });
+
+                var selectId = params.sourceId + "_select";
+                var value = params.targetId.split("_")[2];
+
+                $("#" + selectId + " option")
+                    .removeAttr('selected')
+                    .filter(function (index) {
+                        return index === parseInt(value);
+                    })
+                    .attr("selected", true);
+
+                return true;
+            }
+        };
+
+        var count = 0;
+        var sourceDestinationArray = [];
+
+        $(windowQuestionSelector).each(function (index) {
+            var windowId = $(this).attr("id");
+            var scope = windowId + "scope";
+            var destinationColor = colorArray[count].getHex();
+
+            var sourceEndPoint = {
+                endpoint: [
+                    "Dot",
+                    {radius: 15}
+                ],
+                paintStyle: {
+                    fillStyle: destinationColor
+                },
+                isSource: true,
+                connectorStyle: {
+                    strokeStyle: "#8a8888",
+                    lineWidth: 8
+                },
+                connector: [
+                    MatchingDraggable.connectorType,
+                    {curviness: MatchingDraggable.curviness}
+                ],
+                maxConnections: 1,
+                isTarget: false,
+                dropOptions: exampleDropOptions,
+                scope: scope
+            };
+
+            sourceDestinationArray[count + 1] = sourceEndPoint;
+
+            count++;
+
+            jsPlumb.addEndpoint(
+                windowId,
+                {
+                    anchor: ['RightMiddle', 'RightMiddle', 'RightMiddle', 'RightMiddle']
+                },
+                sourceEndPoint
+            );
+
+            var destinationCount = 0;
+
+            $(windowQuestionSelector).each(function (index) {
+                var windowDestinationId = $(this).attr("id");
+                destinationEndPoint.scope = scope;
+                destinationEndPoint.paintStyle.fillStyle = colorArrayDestination[destinationCount].getHex();
+                destinationCount++;
+
+                jsPlumb.addEndpoint(
+                    windowDestinationId + "_answer",
+                    {
+                        anchors: ['LeftMiddle', 'LeftMiddle', 'LeftMiddle', 'LeftMiddle']
+                    },
+                    destinationEndPoint
+                );
+            });
+        });
+
+        MatchingDraggable.attachBehaviour();
+    },
+    attachBehaviour: function () {
+        if (!MatchingDraggable.initialized) {
+            MatchingDraggable.initialized = true;
+        }
+    }
+};
+
+jsPlumb.ready(function () {
+    if ($(".drag_question").length > 0) {
+        MatchingDraggable.init();
+
+        $(document).scroll(function () {
+            jsPlumb.repaintEverything();
+        });
+
+        $(window).resize(function () {
+            jsPlumb.repaintEverything();
+        });
+    }
+});
+
+function shuffleArray(array) {
+    for (var i = array.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var temp = array[i];
+        array[i] = array[j];
+        array[j] = temp;
+    }
+}
+
+$(function () {
+    // if shuffle answers
+    if ('' == '1') {
+        $('.exercise-draggable-answer').each(function(){
+            // get current ul
+            var $ul = $(this);
+            var li = $ul.find('.touch-items');
+            var liContents = [];
+            li.each(function() {
+                liContents.push($(this));
+            });
+            shuffleArray(liContents);
+            $ul.empty().html(liContents);
+        });
+    }
+
+    DraggableAnswer.init(
+        $(".exercise-draggable-answer"),
+        $(".droppable")
+    );
+});
+</script>
+
+<script src="http://192.168.8.179/chamilo/main/inc/lib/javascript/d3/jquery.xcolor.js"></script>
+
+<link rel="stylesheet" href="http://192.168.8.179/chamilo/main/inc/lib/javascript/hotspot/css/hotspot.css">
+<script src="http://192.168.8.179/chamilo/main/inc/lib/javascript/hotspot/js/hotspot.js"></script>
+
+                <script>
+                var logOutUrl = 'http://192.168.8.179/chamilo/main/inc/ajax/course.ajax.php?a=course_logout&cidReq=TEST&id_session=0&gidReq=0&gradebook=0&origin=';
+                function courseLogout() {
+                    $.ajax({
+                        async : false,
+                        url: logOutUrl,
+                        success: function (data) {
+                            return 1;
+                        }
+                    });
+                }
+                </script>
+
+<script src="http://192.168.8.179/chamilo/web/build/main.russian.js"></script>
+
+<link href="http://192.168.8.179/chamilo/web/css/base.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/web/css/themes/chamilo/default.css" rel="stylesheet" media="screen" type="text/css" />
+<link href="http://192.168.8.179/chamilo/web/css/editor_content.css" rel="stylesheet" media="screen" type="text/css" />
+
+<link href="http://192.168.8.179/chamilo/web/css/themes/chamilo/print.css" rel="stylesheet" media="print" type="text/css" />
+
+    </head>
+<body class="page_origin_">
+
+<!-- START MAIN -->
+<main id="main" dir="ltr" class="section-mycourses ">
+    <noscript>Your do not have JavaScript support enabled in your browser. Chamilo relies heavily on JavaScript to provide you with a more dynamic interface. It is likely that most feature will work, but you might not benefit from the latest improvements in usability. We recommend you change your browser configuration (generally under the Edit -> Preferences menu) and reload this page.</noscript>
+    
+            <!-- START HEADER -->
+        <header id="cm-header">
+            <div id="navigation" class="notification-panel">
+    <div class="help"><a class="ajax" data-title="Помощь" href="http://192.168.8.179/chamilo/main/help/help.php?open=Exercise"  ><img src="http://192.168.8.179/chamilo/main/img/help.large.png" alt="Помощь" title="Помощь"  /></a></div>
+    
+</div>
+    <!-- Topbar -->
+
+<div class="container">
+    <div class="row">
+                <div class="col-xs-10 col-md-3">
+                        <div class="logo">
+                <a href="http://192.168.8.179/chamilo/index.php"  ><img title="My campus" class="img-responsive" id="header-logo" src="http://192.168.8.179/chamilo/web/css/themes/chamilo/images/header-logo.png" alt="My Organisation"  /></a>
+            </div>
+        </div>
+        <div class="col-xs-12 col-md-8">
+            <div class="row">
+                <div class="col-sm-4">
+                                    </div>
+                <div class="col-sm-3">
+                                    </div>
+                <div class="col-sm-5">
+                    <ol class="header-ol">
+                                                <li>
+                            <div class="section-notifications">
+                                                                    <ul id="notifications" class="nav nav-pills pull-right">
+                                    </ul>
+                                                            </div>
+                        </li>
+                        <li>
+                            
+                        </li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Fixed navbar -->
+    <script>
+        $(function () {
+            $.get('http://192.168.8.179/chamilo/main/inc/ajax/message.ajax.php?a=get_count_message', function(data) {
+                var countNotifications = (data.ms_friends + data.ms_groups + data.ms_inbox);
+                if (countNotifications === 0 || isNaN(countNotifications)) {
+                    $("#count_message_li").addClass('hidden');
+                } else {
+                    $("#count_message_li").removeClass('hidden');
+                    $("#count_message").append(countNotifications);
+                }
+            });
+        });
+    </script>
+<nav class="navbar navbar-default">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="pull-right  navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+
+                        <a class="navbar-brand" href="http://192.168.8.179/chamilo/"> <em class="fa fa-home"></em> </a>
+        </div>
+
+        <div id="navbar" class="collapse navbar-collapse">
+            <ul class="nav navbar-nav">
+                                                        
+                                                                        <li class="homepage ">
+                                <a href="http://192.168.8.179/chamilo/index.php"  title="Главная страница">
+                                    Главная страница
+                                </a>
+                            </li>
+                                                                                                    
+                                                                        <li class="my-course active">
+                                <a href="http://192.168.8.179/chamilo/user_portal.php?nosession=true"  title="Мои курсы">
+                                    Мои курсы
+                                </a>
+                            </li>
+                                                                                                    
+                                                                        <li class="agenda ">
+                                <a href="http://192.168.8.179/chamilo/main/calendar/agenda_js.php?type=personal"  title="Мой порядок дня (расписание)">
+                                    Мой порядок дня (расписание)
+                                </a>
+                            </li>
+                                                                                                    
+                                                                        <li class="my-space ">
+                                <a href="http://192.168.8.179/chamilo/main/mySpace/"  title="Отчет">
+                                    Отчет
+                                </a>
+                            </li>
+                                                                                                    
+                                                                        <li class="social-network ">
+                                <a href="http://192.168.8.179/chamilo/main/social/home.php"  title="Social network">
+                                    Social network
+                                </a>
+                            </li>
+                                                                                                    
+                                                                        <li class="dashboard ">
+                                <a href="http://192.168.8.179/chamilo/main/dashboard/index.php"  title="Dashboard">
+                                    Dashboard
+                                </a>
+                            </li>
+                                                                                                    
+                                                                        <li class="admin ">
+                                <a href="http://192.168.8.179/chamilo/main/admin/"  title="Управление порталом">
+                                    Управление порталом
+                                </a>
+                            </li>
+                                                                        </ul>
+                            <ul class="nav navbar-nav navbar-right">
+                                                                                            <li id="count_message_li" class="pull-left " style="float: left !important;" aria-expanded="true">
+                                <a href="http://192.168.8.179/chamilo/main/messages/inbox.php">
+                                    <span id="count_message" class="badge badge-warning"></span>
+                                </a>
+                            </li>
+                            <li class="dropdown avatar-user" style="float:right">
+                                <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button"
+                                   aria-expanded="false">
+                                    <img class="img-circle" src="http://192.168.8.179/chamilo/main/img/icons/32/unknown.png" alt="John Doe"/>
+                                    <span class="username-movil">John Doe</span>
+                                    <span class="caret"></span>
+                                </a>
+                                <ul class="dropdown-menu" role="menu">
+                                    <li class="user-header">
+                                        <div class="text-center">
+                                            <a href="http://192.168.8.179/chamilo/main/social/home.php">
+                                                <img class="img-circle" src="http://192.168.8.179/chamilo/main/img/icons/64/unknown.png" alt="John Doe"/>
+                                                <p class="name">John Doe</p>
+                                            </a>
+                                            <p><em class="fa fa-envelope-o" aria-hidden="true"></em> webmaster@localhost.localdomain</p>
+                                        </div>
+                                    </li>
+                                    <li role="separator" class="divider"></li>
+                                                                            <li class="user-body">
+                                            <a title="Входящие" href="http://192.168.8.179/chamilo/main/messages/inbox.php">
+                                                <em class="fa fa-envelope" aria-hidden="true"></em> Входящие
+                                            </a>
+                                        </li>
+                                    
+                                    
+                                                                            <li class="user-body">
+                                            <a title="My certificates" href="http://192.168.8.179/chamilo/main/gradebook/my_certificates.php">
+                                                <em class="fa fa-graduation-cap"
+                                                    aria-hidden="true"></em> My certificates
+                                            </a>
+                                        </li>
+                                    
+                                    <li class="user-body">
+                                        <a id="logout_button" title="Выход из системы" href="http://192.168.8.179/chamilo/index.php?logout=logout&uid=1">
+                                            <em class="fa fa-sign-out"></em> Выход из системы
+                                        </a>
+                                    </li>
+                                </ul>
+                            </li>
+                                            
+                                    </ul>
+                    </div><!--/.nav-collapse -->
+    </div>
+</nav>
+            <div class="nav-tools">
+            
+        </div>
+            </header>
+        <!-- END HEADER -->
+    
+    <!-- START CONTENT -->
+    <section id="cm-content">
+        <div class="container">
+                                                <!-- TOOLS SHOW COURSE -->
+                    <div id="cm-tools" class="nav-tools">
+                        
+                    </div>
+                    <!-- END TOOLS SHOW COURSE -->
+                
+                                    <div id="view_as_link" class="pull-right"  ><div class="view-options"  ><a class="btn btn-default btn-sm" href="/chamilo/main/exercise/admin.php?cidReq=TEST&amp;exerciseId=30&amp;newQuestion=yes&amp;answerType=1&amp;isStudentView=true" target="_self" rel="noreferrer noopener"><em class="fa fa-eye" title=""></em>  Вид студента</a></div></div><ul class="breadcrumb"  ><li class="active"  ><a href="http://192.168.8.179/chamilo/courses/TEST/index.php?id_session=0" target="_self"><img src="http://192.168.8.179/chamilo/main/img/home.png" alt="test" title="test"  /> test</a></li><li class="active"  ><a href="exercise.php?cidReq=TEST&id_session=0&gidReq=0&gradebook=0&origin=&" target="_self">Упражнения</a></li><li class="active"  ><a href="admin.php?exerciseId=30&cidReq=TEST&id_session=0&gidReq=0&gradebook=0&origin=&" target="_self">Итоговый тест</a></li><li class="active"  >Управление вопрос/ответ</li></ul>
+                                        <div class="actions"><a href="http://192.168.8.179/chamilo/main/exercise/admin.php?exerciseId=30&cidReq=TEST&id_session=0&gidReq=0&gradebook=0&origin="><img src="http://192.168.8.179/chamilo/main/img/icons/32/back.png" alt="Вернуться к списку вопросов" title="Вернуться к списку вопросов"  /></a><a href="http://192.168.8.179/chamilo/main/exercise/overview.php?cidReq=TEST&id_session=0&gidReq=0&gradebook=0&origin=&exerciseId=30&preview=1"><img src="http://192.168.8.179/chamilo/main/img/icons/32/preview_view.png" alt="Предварительный просмотр" title="Предварительный просмотр"  /></a><a href="http://192.168.8.179/chamilo/main/exercise/exercise_report.php?cidReq=TEST&amp;id_session=0&amp;gidReq=0&amp;gradebook=0&amp;origin=&amp;exerciseId=30"  ><img src="http://192.168.8.179/chamilo/main/img/icons/32/test_results.png" alt="Results and feedback" title="Results and feedback"  /></a><a
+        href="http://192.168.8.179/chamilo/main/exercise/exercise_admin.php?cidReq=TEST&id_session=0&gidReq=0&gradebook=0&origin=&modifyExercise=yes&exerciseId=30"><img src="http://192.168.8.179/chamilo/main/img/icons/32/settings.png" alt="Изменить упражнение" title="Изменить упражнение"  /></a></div><div class="alert alert-warning"  >This exercise has been included in a learning path, so it cannot be accessed by students directly from here. If you want to put the same exercise available through the exercises tool, please make a copy of the current exercise using the copy icon.</div><div class="alert alert-info"  >2 questions, for a total score (all questions) of 20.</div><input type="hidden" name="Type" value="1" /><style>
+                .media { display:none;}
+            </style><script type="text/javascript">window.location.href="admin.php?exerciseId=30&cidReq=TEST&id_session=0&gidReq=0&gradebook=0&origin=&page=1&message=ItemAdded";</script>

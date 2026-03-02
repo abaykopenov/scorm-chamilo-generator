@@ -48,7 +48,8 @@ export function CourseCreator() {
     generationProvider: defaults.generation.provider,
     generationBaseUrl: defaults.generation.baseUrl,
     generationModel: defaults.generation.model,
-    generationTemperature: defaults.generation.temperature
+    generationTemperature: defaults.generation.temperature,
+    generationMaxTokens: defaults.generation.maxTokens || 64000
   });
 
   function updateField(key, value) {
@@ -60,20 +61,25 @@ export function CourseCreator() {
     setLlmModels([]);
     startTransition(async () => {
       try {
+        const provider = form.generationProvider === "template" ? "ollama" : form.generationProvider;
         const resp = await fetch("/api/llm/check", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            provider: form.generationProvider,
+            provider,
             baseUrl: form.generationBaseUrl,
             model: form.generationModel
           })
         });
         const data = await resp.json();
         setLlmStatus(data);
-        if (data.models && data.models.length > 0) {
+        if (data.ok && data.models && data.models.length > 0) {
           setLlmModels(data.models);
-          if (!form.generationModel && data.models.length > 0) {
+          // Auto-switch provider from template to ollama
+          if (form.generationProvider === "template") {
+            updateField("generationProvider", "ollama");
+          }
+          if (!form.generationModel) {
             updateField("generationModel", data.models[0]);
           }
         }
@@ -114,7 +120,8 @@ export function CourseCreator() {
             provider: form.generationProvider,
             baseUrl: form.generationBaseUrl,
             model: form.generationModel,
-            temperature: toSafeNumber(form.generationTemperature, defaults.generation.temperature, 0, 1)
+            temperature: toSafeNumber(form.generationTemperature, defaults.generation.temperature, 0, 1),
+            maxTokens: toSafeNumber(form.generationMaxTokens, 64000, 1000, 200000)
           }
         })
       });
@@ -211,6 +218,18 @@ export function CourseCreator() {
               step="0.1"
               value={form.generationTemperature}
               onChange={(event) => updateField("generationTemperature", event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="generationMaxTokens">Max Tokens</label>
+            <input
+              id="generationMaxTokens"
+              type="number"
+              min="1000"
+              max="200000"
+              step="1000"
+              value={form.generationMaxTokens}
+              onChange={(event) => updateField("generationMaxTokens", event.target.value)}
             />
           </div>
         </div>
