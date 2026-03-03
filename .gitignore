@@ -2,3 +2,5 @@ node_modules
 .next
 .data
 npm-debug.log*
+test-pdf.mjs
+test-llm.mjs

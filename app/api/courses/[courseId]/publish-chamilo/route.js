@@ -18,8 +18,15 @@ export async function POST(request, { params }) {
   const payload = await request.json().catch(() => ({}));
   const profile = {
     ...course.integrations?.chamilo,
-    ...payload?.profile
+    ...(payload?.profile || payload)
   };
+
+  // Validate required fields
+  if (!profile.baseUrl || !profile.username || !profile.password) {
+    return NextResponse.json({ error: "Заполните URL, логин и пароль Chamilo." }, { status: 400 });
+  }
+
+  console.log(`[Chamilo] Publishing to ${profile.baseUrl} as ${profile.username}, course: ${profile.courseCode}`);
 
   try {
     // Step 1: Export and upload SCORM package (learning content)

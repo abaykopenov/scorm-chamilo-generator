@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createDefaultGenerateInput } from "@/lib/course-defaults";
+import { FileUploader, ServerManager, ProgressTracker } from "./course-editor";
 
 function toSafeNumber(value, fallback, min, max) {
   const parsed = Number(value);
@@ -30,6 +31,11 @@ export function CourseCreator() {
   const [error, setError] = useState("");
   const [llmModels, setLlmModels] = useState([]);
   const [llmStatus, setLlmStatus] = useState(null);
+  const [fileChunks, setFileChunks] = useState([]);
+  const [servers, setServers] = useState([]);
+  const [useParallel, setUseParallel] = useState(false);
+  const [concurrency, setConcurrency] = useState(4);
+  const [jobId, setJobId] = useState(null);
   const [form, setForm] = useState({
     titleHint: defaults.titleHint,
     audience: defaults.audience,
@@ -51,6 +57,25 @@ export function CourseCreator() {
     generationTemperature: defaults.generation.temperature,
     generationMaxTokens: defaults.generation.maxTokens || 64000
   });
+
+  // Load servers from settings
+  useEffect(() => {
+    fetch("/api/servers").then((r) => r.json()).then((d) => {
+      if (d.servers) setServers(d.servers);
+    }).catch(() => { });
+  }, []);
+
+  // Save servers when changed
+  const handleServersChange = async (newServers) => {
+    setServers(newServers);
+    try {
+      await fetch("/api/servers", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ servers: newServers })
+      });
+    } catch { }
+  };
 
   function updateField(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -92,38 +117,44 @@ export function CourseCreator() {
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+    setJobId(null);
+
+    const payload = {
+      titleHint: form.titleHint,
+      audience: form.audience,
+      learningGoals: parseGoals(form.learningGoals),
+      durationMinutes: Number(form.durationMinutes),
+      language: form.language,
+      structure: {
+        moduleCount: Number(form.moduleCount),
+        sectionsPerModule: Number(form.sectionsPerModule),
+        scosPerSection: Number(form.scosPerSection),
+        screensPerSco: Number(form.screensPerSco)
+      },
+      finalTest: {
+        enabled: Boolean(form.finalTestEnabled),
+        questionCount: Number(form.questionCount),
+        passingScore: Number(form.passingScore),
+        attemptsLimit: Number(form.attemptsLimit),
+        maxTimeMinutes: Number(form.maxTimeMinutes)
+      },
+      generation: {
+        provider: form.generationProvider,
+        baseUrl: form.generationBaseUrl,
+        model: form.generationModel,
+        temperature: toSafeNumber(form.generationTemperature, defaults.generation.temperature, 0, 1),
+        maxTokens: toSafeNumber(form.generationMaxTokens, 64000, 1000, 200000)
+      },
+      fileChunks: fileChunks.length > 0 ? fileChunks : undefined,
+      async: useParallel && servers.filter((s) => s.enabled).length > 0,
+      concurrency
+    };
 
     startTransition(async () => {
       const response = await fetch("/api/courses/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          titleHint: form.titleHint,
-          audience: form.audience,
-          learningGoals: parseGoals(form.learningGoals),
-          durationMinutes: Number(form.durationMinutes),
-          language: form.language,
-          structure: {
-            moduleCount: Number(form.moduleCount),
-            sectionsPerModule: Number(form.sectionsPerModule),
-            scosPerSection: Number(form.scosPerSection),
-            screensPerSco: Number(form.screensPerSco)
-          },
-          finalTest: {
-            enabled: Boolean(form.finalTestEnabled),
-            questionCount: Number(form.questionCount),
-            passingScore: Number(form.passingScore),
-            attemptsLimit: Number(form.attemptsLimit),
-            maxTimeMinutes: Number(form.maxTimeMinutes)
-          },
-          generation: {
-            provider: form.generationProvider,
-            baseUrl: form.generationBaseUrl,
-            model: form.generationModel,
-            temperature: toSafeNumber(form.generationTemperature, defaults.generation.temperature, 0, 1),
-            maxTokens: toSafeNumber(form.generationMaxTokens, 64000, 1000, 200000)
-          }
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
@@ -131,8 +162,14 @@ export function CourseCreator() {
         return;
       }
 
-      const course = await response.json();
-      router.push(`/courses/${course.id}`);
+      const result = await response.json();
+      if (result.jobId) {
+        // Async mode — show progress
+        setJobId(result.jobId);
+      } else {
+        // Sync mode — redirect
+        router.push(`/courses/${result.id}`);
+      }
     });
   }
 
@@ -248,6 +285,40 @@ export function CourseCreator() {
 
       <div className="panel">
         <div className="tree-header">
+          <h3>📁 Загрузка материалов</h3>
+          <span className="meta">Загрузите файлы (PDF, DOCX, TXT) — ИИ использует их как основу для контента курса.</span>
+        </div>
+        <FileUploader onChunksReady={(chunks) => setFileChunks(chunks)} />
+      </div>
+
+      <div className="panel">
+        <div className="tree-header">
+          <h3>🖥️ Параллельная генерация</h3>
+          <span className="meta">Добавьте несколько LLM-серверов для ускорения генерации больших курсов.</span>
+        </div>
+        <div className="field" style={{ marginBottom: "12px" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <input type="checkbox" checked={useParallel} onChange={(e) => setUseParallel(e.target.checked)} />
+            Включить параллельную генерацию
+          </label>
+        </div>
+        {useParallel && (
+          <>
+            <div className="field" style={{ marginBottom: "12px" }}>
+              <label htmlFor="concurrency">Макс. параллельных задач: {concurrency}</label>
+              <input
+                id="concurrency" type="range" min="1" max="8" value={concurrency}
+                onChange={(e) => setConcurrency(Number(e.target.value))}
+                style={{ width: "100%" }}
+              />
+            </div>
+            <ServerManager servers={servers} onChange={handleServersChange} />
+          </>
+        )}
+      </div>
+
+      <div className="panel">
+        <div className="tree-header">
           <h3>Структура курса</h3>
           <span className="meta">
             Параметры иерархии <code>Course -&gt; Module -&gt; Section -&gt; SCO -&gt; Screen</code>
@@ -311,9 +382,16 @@ export function CourseCreator() {
 
       {error ? <div className="status warning">{error}</div> : null}
 
+      {jobId && (
+        <ProgressTracker
+          jobId={jobId}
+          onComplete={(courseId) => router.push(`/courses/${courseId}`)}
+        />
+      )}
+
       <div className="actions">
-        <button className="button" type="submit" disabled={isPending}>
-          {isPending ? "Генерация..." : "Сгенерировать курс"}
+        <button className="button" type="submit" disabled={isPending || jobId}>
+          {isPending ? "Генерация..." : jobId ? "Генерация идёт..." : useParallel ? "⚡ Параллельная генерация" : "Сгенерировать курс"}
         </button>
       </div>
     </form>
