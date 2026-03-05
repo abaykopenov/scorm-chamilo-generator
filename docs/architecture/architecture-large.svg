@@ -1,0 +1,212 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3200" height="2100" viewBox="0 0 3200 2100">
+  <defs>
+    <style>
+      .title { font: 700 56px 'Arial', sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 28px 'Arial', sans-serif; fill: #1e293b; }
+      .layer-title { font: 700 34px 'Arial', sans-serif; fill: #0f172a; }
+      .node-title { font: 700 30px 'Arial', sans-serif; fill: #0b1324; }
+      .node-text { font: 500 24px 'Arial', sans-serif; fill: #1f2937; }
+      .small { font: 500 22px 'Arial', sans-serif; fill: #334155; }
+      .layer { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 4; rx: 28; }
+      .node { fill: #ffffff; stroke: #94a3b8; stroke-width: 3; rx: 20; }
+      .ext { fill: #eff6ff; stroke: #60a5fa; stroke-width: 3; rx: 20; }
+      .store { fill: #f0fdf4; stroke: #22c55e; stroke-width: 3; rx: 20; }
+      .arrow { stroke: #334155; stroke-width: 4; fill: none; marker-end: url(#arrow); }
+      .arrow-dashed { stroke: #475569; stroke-width: 4; fill: none; marker-end: url(#arrow); stroke-dasharray: 14 10; }
+      .arrow-soft { stroke: #64748b; stroke-width: 3; fill: none; marker-end: url(#arrowSoft); }
+    </style>
+
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="12" markerHeight="12" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+    <marker id="arrowSoft" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="3200" height="2100" fill="#ffffff"/>
+
+  <text x="80" y="95" class="title">SCORM + RAG Architecture (Large View)</text>
+  <text x="80" y="145" class="subtitle">Upload materials -> chunk/embed -> retrieve context -> generate course -> export/publish</text>
+
+  <!-- LAYER 1: CLIENT -->
+  <rect class="layer" x="60" y="190" width="3040" height="310"/>
+  <text x="90" y="240" class="layer-title">1) Client Layer</text>
+
+  <rect class="node" x="100" y="275" width="420" height="180"/>
+  <text x="130" y="330" class="node-title">User</text>
+  <text x="130" y="375" class="node-text">Creates request, uploads files,</text>
+  <text x="130" y="410" class="node-text">edits and exports course</text>
+
+  <rect class="node" x="600" y="275" width="920" height="180"/>
+  <text x="630" y="330" class="node-title">Next.js Frontend</text>
+  <text x="630" y="375" class="node-text">Course creator UI, file uploader,</text>
+  <text x="630" y="410" class="node-text">editor, generation status and controls</text>
+
+  <rect class="node" x="1610" y="275" width="700" height="180"/>
+  <text x="1640" y="330" class="node-title">Course Editor</text>
+  <text x="1640" y="375" class="node-text">Manual content fixes and structure</text>
+  <text x="1640" y="410" class="node-text">adjustments before SCORM export</text>
+
+  <rect class="node" x="2380" y="275" width="680" height="180"/>
+  <text x="2410" y="330" class="node-title">Publish / Export Actions</text>
+  <text x="2410" y="375" class="node-text">Start SCORM build and</text>
+  <text x="2410" y="410" class="node-text">publish to Chamilo</text>
+
+  <!-- LAYER 2: API -->
+  <rect class="layer" x="60" y="540" width="3040" height="370"/>
+  <text x="90" y="590" class="layer-title">2) API Layer (Next.js /app/api)</text>
+
+  <rect class="node" x="100" y="630" width="560" height="230"/>
+  <text x="130" y="685" class="node-title">/api/materials/upload</text>
+  <text x="130" y="730" class="node-text">Accept multipart file</text>
+  <text x="130" y="765" class="node-text">Validate type and size</text>
+  <text x="130" y="800" class="node-text">Save file and metadata</text>
+
+  <rect class="node" x="730" y="630" width="560" height="230"/>
+  <text x="760" y="685" class="node-title">/api/materials/index</text>
+  <text x="760" y="730" class="node-text">Parse -> chunk -> embed</text>
+  <text x="760" y="765" class="node-text">Store vectors and chunk map</text>
+  <text x="760" y="800" class="node-text">Mark index status</text>
+
+  <rect class="node" x="1360" y="630" width="700" height="230"/>
+  <text x="1390" y="685" class="node-title">/api/courses/generate</text>
+  <text x="1390" y="730" class="node-text">Retrieve top-K chunks by docIds</text>
+  <text x="1390" y="765" class="node-text">Build prompt + call LLM URL</text>
+  <text x="1390" y="800" class="node-text">Validate and save course draft</text>
+
+  <rect class="node" x="2140" y="630" width="420" height="230"/>
+  <text x="2170" y="685" class="node-title">/api/courses/:id</text>
+  <text x="2170" y="730" class="node-text">GET/PUT course</text>
+  <text x="2170" y="765" class="node-text">Persist edits</text>
+
+  <rect class="node" x="2620" y="630" width="440" height="230"/>
+  <text x="2650" y="685" class="node-title">Export / Publish</text>
+  <text x="2650" y="730" class="node-text">Build SCORM ZIP</text>
+  <text x="2650" y="765" class="node-text">Upload into Chamilo</text>
+
+  <!-- LAYER 3: RAG + GENERATION -->
+  <rect class="layer" x="60" y="950" width="3040" height="540"/>
+  <text x="90" y="1000" class="layer-title">3) RAG + Generation Pipeline</text>
+
+  <rect class="node" x="100" y="1040" width="410" height="180"/>
+  <text x="130" y="1095" class="node-title">Parser</text>
+  <text x="130" y="1140" class="node-text">PDF, DOCX, TXT, MD</text>
+  <text x="130" y="1175" class="node-text">to plain text</text>
+
+  <rect class="node" x="560" y="1040" width="470" height="180"/>
+  <text x="590" y="1095" class="node-title">Chunker</text>
+  <text x="590" y="1140" class="node-text">800-1200 chars</text>
+  <text x="590" y="1175" class="node-text">15-20% overlap</text>
+
+  <rect class="node" x="1080" y="1040" width="520" height="180"/>
+  <text x="1110" y="1095" class="node-title">Embeddings Client</text>
+  <text x="1110" y="1140" class="node-text">Calls embedding service URL</text>
+  <text x="1110" y="1175" class="node-text">with chunk texts</text>
+
+  <rect class="node" x="1660" y="1040" width="530" height="180"/>
+  <text x="1690" y="1095" class="node-title">Retriever</text>
+  <text x="1690" y="1140" class="node-text">Vector similarity search</text>
+  <text x="1690" y="1175" class="node-text">filtered by selected docIds</text>
+
+  <rect class="node" x="2240" y="1040" width="510" height="180"/>
+  <text x="2270" y="1095" class="node-title">Prompt Builder</text>
+  <text x="2270" y="1140" class="node-text">Brief + retrieved context +</text>
+  <text x="2270" y="1175" class="node-text">course JSON schema</text>
+
+  <rect class="node" x="2800" y="1040" width="260" height="180"/>
+  <text x="2830" y="1095" class="node-title">LLM Call</text>
+  <text x="2830" y="1140" class="node-text">Generate</text>
+  <text x="2830" y="1175" class="node-text">outline JSON</text>
+
+  <rect class="node" x="1660" y="1280" width="620" height="170"/>
+  <text x="1690" y="1335" class="node-title">Course Builder + Validation</text>
+  <text x="1690" y="1380" class="node-text">Normalize structure, questions, fallback</text>
+  <text x="1690" y="1415" class="node-text">Save final draft for editor</text>
+
+  <rect class="node" x="2310" y="1280" width="750" height="170"/>
+  <text x="2340" y="1335" class="node-title">Optional QA Agent (Phase 2)</text>
+  <text x="2340" y="1380" class="node-text">Checks grounding, coverage, structure</text>
+  <text x="2340" y="1415" class="node-text">Returns structured corrections</text>
+
+  <!-- LAYER 4: DATA -->
+  <rect class="layer" x="60" y="1530" width="3040" height="510"/>
+  <text x="90" y="1580" class="layer-title">4) Data + External Services</text>
+
+  <rect class="store" x="100" y="1620" width="560" height="180"/>
+  <text x="130" y="1675" class="node-title">Local Files</text>
+  <text x="130" y="1720" class="node-text">.data/materials</text>
+  <text x="130" y="1755" class="small">raw user documents</text>
+
+  <rect class="store" x="730" y="1620" width="560" height="180"/>
+  <text x="760" y="1675" class="node-title">Metadata DB</text>
+  <text x="760" y="1720" class="node-text">docId, chunkId, hash, status</text>
+  <text x="760" y="1755" class="small">SQLite or Postgres</text>
+
+  <rect class="store" x="1360" y="1620" width="560" height="180"/>
+  <text x="1390" y="1675" class="node-title">Vector DB</text>
+  <text x="1390" y="1720" class="node-text">Qdrant or pgvector</text>
+  <text x="1390" y="1755" class="small">embeddings + payload</text>
+
+  <rect class="store" x="1990" y="1620" width="560" height="180"/>
+  <text x="2020" y="1675" class="node-title">Course / Export Store</text>
+  <text x="2020" y="1720" class="node-text">.data/courses, .data/exports</text>
+  <text x="2020" y="1755" class="small">saved drafts and SCORM zips</text>
+
+  <rect class="ext" x="2620" y="1620" width="440" height="180"/>
+  <text x="2650" y="1675" class="node-title">Generation Model URL</text>
+  <text x="2650" y="1720" class="node-text">local Ollama/vLLM server</text>
+
+  <rect class="ext" x="2620" y="1830" width="440" height="180"/>
+  <text x="2650" y="1885" class="node-title">Embedding Model URL</text>
+  <text x="2650" y="1930" class="node-text">separate embedding endpoint</text>
+
+  <!-- Top arrows -->
+  <path class="arrow" d="M 520 365 L 600 365"/>
+  <path class="arrow" d="M 1520 365 L 1610 365"/>
+  <path class="arrow" d="M 2310 365 L 2380 365"/>
+
+  <!-- Frontend to API -->
+  <path class="arrow" d="M 1060 455 L 1060 630"/>
+  <path class="arrow" d="M 1930 455 L 1930 630"/>
+  <path class="arrow" d="M 2720 455 L 2720 630"/>
+
+  <!-- API internal -->
+  <path class="arrow" d="M 660 745 L 730 745"/>
+  <path class="arrow" d="M 1290 745 L 1360 745"/>
+  <path class="arrow" d="M 2060 745 L 2140 745"/>
+  <path class="arrow" d="M 2560 745 L 2620 745"/>
+
+  <!-- API -> Pipeline -->
+  <path class="arrow" d="M 1010 860 L 1010 1040"/>
+  <path class="arrow" d="M 1710 860 L 1710 1040"/>
+
+  <!-- Pipeline flow -->
+  <path class="arrow" d="M 510 1130 L 560 1130"/>
+  <path class="arrow" d="M 1030 1130 L 1080 1130"/>
+  <path class="arrow" d="M 1600 1130 L 1660 1130"/>
+  <path class="arrow" d="M 2190 1130 L 2240 1130"/>
+  <path class="arrow" d="M 2750 1130 L 2800 1130"/>
+
+  <path class="arrow" d="M 2930 1220 L 2930 1365 L 2280 1365"/>
+  <path class="arrow" d="M 1970 1220 L 1970 1280"/>
+
+  <path class="arrow-dashed" d="M 2685 1280 L 2685 1210 L 2120 1210"/>
+
+  <!-- Pipeline to data -->
+  <path class="arrow-soft" d="M 300 1220 L 300 1620"/>
+  <path class="arrow-soft" d="M 800 1220 L 930 1620"/>
+  <path class="arrow-soft" d="M 1250 1220 L 1640 1620"/>
+  <path class="arrow-soft" d="M 1800 1220 L 1640 1620"/>
+  <path class="arrow-soft" d="M 1960 1450 L 2270 1620"/>
+
+  <!-- Data to external -->
+  <path class="arrow" d="M 3060 1710 L 2980 1710"/>
+  <path class="arrow" d="M 3060 1920 L 2980 1920"/>
+
+  <!-- Export to Chamilo note -->
+  <rect class="ext" x="80" y="1840" width="2470" height="170"/>
+  <text x="110" y="1895" class="node-title">Delivery Flow</text>
+  <text x="110" y="1940" class="node-text">Saved course -> SCORM packager -> ZIP archive -> Chamilo upload endpoint</text>
+  <text x="110" y="1975" class="small">Current code already has SCORM build/export and Chamilo publish blocks; RAG layer is the planned extension.</text>
+</svg>

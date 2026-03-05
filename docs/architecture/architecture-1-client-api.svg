@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2600" height="1500" viewBox="0 0 2600 1500">
+  <defs>
+    <style>
+      .title { font: 700 54px Arial, sans-serif; fill: #0f172a; }
+      .layer { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 4; rx: 24; }
+      .box { fill: #fff; stroke: #94a3b8; stroke-width: 3; rx: 18; }
+      .h { font: 700 32px Arial, sans-serif; fill: #0b1324; }
+      .t { font: 500 24px Arial, sans-serif; fill: #1f2937; }
+      .a { stroke: #334155; stroke-width: 4; fill: none; marker-end: url(#arr); }
+    </style>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="11" markerHeight="11" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <rect width="2600" height="1500" fill="#fff"/>
+  <text x="60" y="90" class="title">Architecture Part 1: Client + API</text>
+
+  <rect class="layer" x="50" y="140" width="2500" height="520"/>
+  <text x="80" y="190" class="h">Client Layer</text>
+
+  <rect class="box" x="90" y="230" width="420" height="170"/>
+  <text x="120" y="285" class="h">User</text>
+  <text x="120" y="325" class="t">Uploads materials,</text>
+  <text x="120" y="360" class="t">starts generation</text>
+
+  <rect class="box" x="580" y="230" width="940" height="170"/>
+  <text x="610" y="285" class="h">Next.js Frontend</text>
+  <text x="610" y="325" class="t">Course creator, uploader, generation controls</text>
+  <text x="610" y="360" class="t">and status widgets</text>
+
+  <rect class="box" x="1590" y="230" width="420" height="170"/>
+  <text x="1620" y="285" class="h">Course Editor</text>
+  <text x="1620" y="325" class="t">Manual corrections,</text>
+  <text x="1620" y="360" class="t">structure tuning</text>
+
+  <rect class="box" x="2080" y="230" width="430" height="170"/>
+  <text x="2110" y="285" class="h">Export / Publish</text>
+  <text x="2110" y="325" class="t">SCORM build and</text>
+  <text x="2110" y="360" class="t">Chamilo upload</text>
+
+  <rect class="layer" x="50" y="720" width="2500" height="720"/>
+  <text x="80" y="770" class="h">API Layer (Next.js /app/api)</text>
+
+  <rect class="box" x="90" y="810" width="550" height="240"/>
+  <text x="120" y="865" class="h">POST /api/materials/upload</text>
+  <text x="120" y="910" class="t">validate file type and size</text>
+  <text x="120" y="945" class="t">save to local storage</text>
+  <text x="120" y="980" class="t">return documentId</text>
+
+  <rect class="box" x="690" y="810" width="550" height="240"/>
+  <text x="720" y="865" class="h">POST /api/materials/index</text>
+  <text x="720" y="910" class="t">parse + chunk + embeddings</text>
+  <text x="720" y="945" class="t">write vectors and metadata</text>
+  <text x="720" y="980" class="t">update indexing status</text>
+
+  <rect class="box" x="1290" y="810" width="620" height="240"/>
+  <text x="1320" y="865" class="h">POST /api/courses/generate</text>
+  <text x="1320" y="910" class="t">retrieve top-K context by docIds</text>
+  <text x="1320" y="945" class="t">call LLM generation endpoint</text>
+  <text x="1320" y="980" class="t">save normalized draft</text>
+
+  <rect class="box" x="1960" y="810" width="550" height="240"/>
+  <text x="1990" y="865" class="h">Other APIs</text>
+  <text x="1990" y="910" class="t">GET/PUT /api/courses/:id</text>
+  <text x="1990" y="945" class="t">POST /export-scorm</text>
+  <text x="1990" y="980" class="t">POST /publish-chamilo</text>
+
+  <path class="a" d="M510 315 L580 315"/>
+  <path class="a" d="M1520 315 L1590 315"/>
+  <path class="a" d="M2010 315 L2080 315"/>
+
+  <path class="a" d="M1050 400 L1050 810"/>
+  <path class="a" d="M1760 400 L1760 810"/>
+  <path class="a" d="M2290 400 L2290 810"/>
+
+  <path class="a" d="M640 930 L690 930"/>
+  <path class="a" d="M1240 930 L1290 930"/>
+  <path class="a" d="M1910 930 L1960 930"/>
+</svg>
