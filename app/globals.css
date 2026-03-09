@@ -361,6 +361,49 @@ button {
   transition: width 220ms ease;
 }
 
+.generation-history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.generation-history-item {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(88, 45, 26, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.generation-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.history-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid rgba(88, 45, 26, 0.14);
+  background: rgba(88, 45, 26, 0.08);
+}
+
+.history-badge.complete {
+  border-color: rgba(37, 111, 73, 0.22);
+  background: rgba(37, 111, 73, 0.08);
+  color: var(--success);
+}
+
+.history-badge.progress {
+  border-color: rgba(175, 61, 30, 0.18);
+  background: rgba(175, 61, 30, 0.08);
+  color: var(--accent-strong);
+}
+
 .materials-list {
   display: grid;
   gap: 10px;

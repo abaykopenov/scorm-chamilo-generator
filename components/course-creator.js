@@ -42,6 +42,17 @@ function formatFileSize(bytes) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return "n/a";
+  }
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return `${value}`;
+  }
+}
+
 const MAX_UPLOAD_FILE_SIZE_MB = 50;
 const MAX_UPLOAD_FILE_SIZE = MAX_UPLOAD_FILE_SIZE_MB * 1024 * 1024;
 const MAX_UPLOAD_FILES = 10;
@@ -58,7 +69,7 @@ const GENERATION_STAGE_LABELS = {
   done: "Completed"
 };
 
-export function CourseCreator() {
+export function CourseCreator({ initialHistory = [] }) {
   const router = useRouter();
   const defaults = createDefaultGenerateInput();
   const [isPending, startTransition] = useTransition();
@@ -85,6 +96,17 @@ export function CourseCreator() {
     message: "Checking Qdrant...",
     checkedAt: "",
     target: null
+  });
+
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [generationHistory, setGenerationHistory] = useState(
+    Array.isArray(initialHistory) ? initialHistory : []
+  );
+  const [moduleStreamState, setModuleStreamState] = useState({
+    courseId: "",
+    completedModules: 0,
+    totalModules: 0,
+    lastModuleTitle: ""
   });
 
   const [form, setForm] = useState({
@@ -185,11 +207,45 @@ export function CourseCreator() {
     }
   }
 
+  function upsertHistoryEntry(entry) {
+    if (!entry?.id) {
+      return;
+    }
+
+    setGenerationHistory((current) => {
+      const next = [entry, ...current.filter((item) => item?.id !== entry.id)];
+      next.sort((left, right) => {
+        const leftTs = new Date(left?.updatedAt || 0).getTime() || 0;
+        const rightTs = new Date(right?.updatedAt || 0).getTime() || 0;
+        return rightTs - leftTs;
+      });
+      return next.slice(0, 30);
+    });
+  }
+
+  async function refreshGenerationHistory() {
+    setHistoryLoading(true);
+    try {
+      const response = await fetch("/api/courses?limit=30");
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to load generation history.");
+      }
+      const courses = Array.isArray(payload?.courses) ? payload.courses : [];
+      setGenerationHistory(courses);
+    } catch (historyError) {
+      setError((current) => current || resolveErrorMessage(historyError, "Failed to load generation history."));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
   useEffect(() => {
     refreshMaterials().catch(() => {
       setMaterialsMessage("Failed to load materials list.");
     });
     checkQdrantStatus();
+    refreshGenerationHistory().catch(() => {});
   }, []);
 
   async function loadMaterialChunks(materialId, options = {}) {
@@ -528,6 +584,12 @@ export function CourseCreator() {
       stage: "request",
       message: GENERATION_STAGE_LABELS.request
     });
+    setModuleStreamState({
+      courseId: "",
+      completedModules: 0,
+      totalModules: 0,
+      lastModuleTitle: ""
+    });
 
     try {
       const response = await fetch("/api/courses/generate?stream=1", {
@@ -572,6 +634,48 @@ export function CourseCreator() {
           throw new Error(streamEvent.message || "Failed to generate course.");
         }
 
+        if (streamEvent.type === "module_ready") {
+          const courseId = `${streamEvent.courseId || ""}`.trim();
+          const moduleIndex = toSafeNumber(streamEvent.moduleIndex, 0, 0, 1000);
+          const totalModules = toSafeNumber(streamEvent.totalModules, 0, 0, 1000);
+          const completedModules = toSafeNumber(streamEvent.completedModules, moduleIndex + 1, 0, 1000);
+          const moduleTitle = `${streamEvent.moduleTitle || ""}`.trim();
+
+          setGenerationProgress((current) => {
+            const progressFromModules = totalModules > 0
+              ? Math.min(95, Math.max(8, Math.round((completedModules / totalModules) * 90)))
+              : current.percent;
+
+            return {
+              ...current,
+              percent: Math.max(current.percent, progressFromModules),
+              stage: "module_ready",
+              message: "Module " + completedModules + "/" + (totalModules || "?") + " is ready" + (moduleTitle ? ": " + moduleTitle : "")
+            };
+          });
+
+          setModuleStreamState({
+            courseId,
+            completedModules,
+            totalModules,
+            lastModuleTitle: moduleTitle
+          });
+
+          if (courseId) {
+            upsertHistoryEntry({
+              id: courseId,
+              title: form.titleHint || "Untitled course",
+              description: "",
+              updatedAt: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
+              generationStatus: "in_progress",
+              completedModules,
+              moduleCount: totalModules
+            });
+          }
+          return;
+        }
+
         if (streamEvent.type === "done") {
           generatedCourse = streamEvent.course || null;
           setGenerationProgress({
@@ -580,6 +684,19 @@ export function CourseCreator() {
             stage: "done",
             message: GENERATION_STAGE_LABELS.done
           });
+
+          if (generatedCourse?.id) {
+            upsertHistoryEntry({
+              id: generatedCourse.id,
+              title: generatedCourse.title || form.titleHint || "Untitled course",
+              description: generatedCourse.description || "",
+              updatedAt: generatedCourse.updatedAt || new Date().toISOString(),
+              createdAt: generatedCourse.createdAt || new Date().toISOString(),
+              generationStatus: generatedCourse.generationStatus || "completed",
+              completedModules: Number(generatedCourse.completedModules || generatedCourse.modules?.length || 0),
+              moduleCount: Array.isArray(generatedCourse.modules) ? generatedCourse.modules.length : 0
+            });
+          }
         }
       };
 
@@ -1029,6 +1146,65 @@ export function CourseCreator() {
       </div>
 
       {error ? <div className="status warning">{error}</div> : null}
+
+      {moduleStreamState.courseId ? (
+        <div className="status">
+          <strong>Module ready: </strong>
+          {moduleStreamState.completedModules}/{moduleStreamState.totalModules || "?"}
+          {moduleStreamState.lastModuleTitle ? " - " + moduleStreamState.lastModuleTitle : ""}
+          <div className="actions">
+            <a
+              className="link-button"
+              href={"/courses/" + moduleStreamState.courseId}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open current draft
+            </a>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="panel stack">
+        <div className="tree-header">
+          <h3>Generation history</h3>
+          <button
+            className="link-button"
+            type="button"
+            onClick={refreshGenerationHistory}
+            disabled={historyLoading || generationProgress.active}
+          >
+            {historyLoading ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+
+        {generationHistory.length === 0 ? (
+          <p className="note">No generated courses yet.</p>
+        ) : (
+          <div className="generation-history-list">
+            {generationHistory.map((historyItem) => (
+              <article key={historyItem.id} className="generation-history-item">
+                <div className="generation-history-head">
+                  <strong>{historyItem.title || "Untitled course"}</strong>
+                  <span className={historyItem.generationStatus === "completed" ? "history-badge complete" : "history-badge progress"}>
+                    {historyItem.generationStatus === "completed" ? "completed" : "in progress"}
+                  </span>
+                </div>
+                <div className="meta">Updated: {formatDateTime(historyItem.updatedAt)}</div>
+                <div className="meta">
+                  Modules: {Number(historyItem.completedModules || 0)}/{Number(historyItem.moduleCount || 0)}
+                </div>
+                <div className="actions">
+                  <a className="link-button" href={"/courses/" + historyItem.id}>
+                    Open course
+                  </a>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+
       {generationProgress.active ? (
         <div className="generation-progress" role="status" aria-live="polite">
           <div className="generation-progress-head">

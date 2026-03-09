@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { saveCourse } from "@/lib/course-store";
 import { generateCourseDraft } from "@/lib/course-generator";
 
@@ -34,12 +34,41 @@ function createProgressStream(payload) {
 
       try {
         report(3, "request", "Preparing request");
+
         const course = await generateCourseDraft(payload, {
-          onProgress: report
+          onProgress: report,
+          onModuleReady: async (event) => {
+            const moduleIndex = Number(event?.moduleIndex || 0);
+            const totalModules = Number(event?.totalModules || 0);
+            const moduleTitle = `${event?.module?.title || ""}`.trim();
+
+            const snapshot = {
+              ...(event?.course || {}),
+              generationStatus: "in_progress",
+              completedModules: moduleIndex + 1
+            };
+
+            if (snapshot?.id) {
+              await saveCourse(snapshot);
+            }
+
+            send({
+              type: "module_ready",
+              courseId: snapshot?.id || "",
+              moduleIndex,
+              totalModules,
+              moduleTitle,
+              completedModules: moduleIndex + 1
+            });
+          }
         });
 
         report(92, "saving", "Saving course");
-        const savedCourse = await saveCourse(course);
+        const savedCourse = await saveCourse({
+          ...course,
+          generationStatus: "completed",
+          completedModules: Array.isArray(course?.modules) ? course.modules.length : 0
+        });
 
         report(100, "done", "Completed");
         send({ type: "done", course: savedCourse });
@@ -59,7 +88,11 @@ export async function POST(request) {
   if (!streamMode) {
     try {
       const course = await generateCourseDraft(payload);
-      const savedCourse = await saveCourse(course);
+      const savedCourse = await saveCourse({
+        ...course,
+        generationStatus: "completed",
+        completedModules: Array.isArray(course?.modules) ? course.modules.length : 0
+      });
       return NextResponse.json(savedCourse, { status: 201 });
     } catch (error) {
       return NextResponse.json(

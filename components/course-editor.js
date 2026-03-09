@@ -121,6 +121,7 @@ export function CourseEditor({ initialCourse }) {
   const [exportResult, setExportResult] = useState(null);
   const [publishResult, setPublishResult] = useState(null);
   const [isPending, startTransition] = useTransition();
+  const [regenerationTarget, setRegenerationTarget] = useState("");
   const [structure, setStructure] = useState({
     moduleCount: course.modules.length,
     sectionsPerModule: course.modules[0]?.sections.length || 1,
@@ -249,6 +250,64 @@ function saveCourse() {
       setCourse(rebuilt);
       setMessage("Структура обновлена.");
     });
+  }
+
+  async function regenerateModule(moduleIndex) {
+    setError("");
+    setMessage("");
+    setRegenerationTarget("module:" + moduleIndex);
+
+    try {
+      const response = await fetch(`/api/courses/${course.id}/regenerate-module`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ moduleIndex })
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to regenerate module.");
+      }
+
+      setCourse(payload);
+      setMessage("Module " + (moduleIndex + 1) + " regenerated.");
+    } catch (regenerateError) {
+      setError(regenerateError instanceof Error ? regenerateError.message : "Failed to regenerate module.");
+    } finally {
+      setRegenerationTarget("");
+    }
+  }
+
+  async function regenerateScreen(moduleIndex, sectionIndex, scoIndex, screenIndex) {
+    setError("");
+    setMessage("");
+    const target = ["screen", moduleIndex, sectionIndex, scoIndex, screenIndex].join(":");
+    setRegenerationTarget(target);
+
+    try {
+      const response = await fetch(`/api/courses/${course.id}/regenerate-screen`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          moduleIndex,
+          sectionIndex,
+          scoIndex,
+          screenIndex
+        })
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to regenerate screen.");
+      }
+
+      setCourse(payload);
+      setMessage("Screen " + (screenIndex + 1) + " regenerated.");
+    } catch (regenerateError) {
+      setError(regenerateError instanceof Error ? regenerateError.message : "Failed to regenerate screen.");
+    } finally {
+      setRegenerationTarget("");
+    }
   }
 
   function exportScorm() {
@@ -703,6 +762,16 @@ function saveCourse() {
                       })}
                     />
                   </div>
+                  <div className="actions">
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      onClick={() => regenerateModule(moduleIndex)}
+                      disabled={isPending || Boolean(regenerationTarget)}
+                    >
+                      {regenerationTarget === "module:" + moduleIndex ? "Regenerating module..." : "Regenerate this module"}
+                    </button>
+                  </div>
                   {moduleItem.sections.map((sectionItem, sectionIndex) => (
                     <details className="nested-accordion" key={sectionItem.id}>
                       <summary>
@@ -762,6 +831,18 @@ function saveCourse() {
                                           };
                                         })}
                                       />
+                                    </div>
+                                    <div className="actions">
+                                      <button
+                                        className="ghost-button"
+                                        type="button"
+                                        onClick={() => regenerateScreen(moduleIndex, sectionIndex, scoIndex, screenIndex)}
+                                        disabled={isPending || Boolean(regenerationTarget)}
+                                      >
+                                        {regenerationTarget === ["screen", moduleIndex, sectionIndex, scoIndex, screenIndex].join(":")
+                                          ? "Regenerating screen..."
+                                          : "Regenerate this screen"}
+                                      </button>
                                     </div>
                                   </div>
                                 </details>

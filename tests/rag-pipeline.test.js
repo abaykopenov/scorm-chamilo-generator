@@ -127,3 +127,30 @@ test("deleteMaterial removes file and metadata", async () => {
   const missing = await getMaterial(material.id);
   assert.equal(missing, null);
 });
+
+test("chunkText dehyphenates lines and removes duplicate paragraphs", () => {
+  const text = [
+    "Digital twin hy-\nbrid architecture improves reliability and visibility.",
+    "Digital twin hy-\nbrid architecture improves reliability and visibility.",
+    "A separate paragraph adds context for operational onboarding tasks."
+  ].join("\n\n");
+
+  const chunks = chunkText(text, { maxChars: 2000, overlapChars: 0, minChars: 120 });
+  const joined = chunks.map((chunk) => chunk.text).join(" ");
+
+  assert.match(joined, /hybrid architecture/i);
+  assert.equal((joined.match(/hybrid architecture/gi) || []).length, 1);
+});
+
+test("chunkText skips mojibake-like paragraphs when valid text exists", () => {
+  const text = [
+    "Ð¾Ð·Ð´Ð°Ð½Ð¸Ñ Ð¸Ð·Ð´ÐµÐ»Ð¸Ñ Ð½Ð° Ð±Ð°Ð·Ðµ MBSE.",
+    "Normal paragraph with concrete learning guidance for staff onboarding."
+  ].join("\n\n");
+
+  const chunks = chunkText(text, { maxChars: 2000, overlapChars: 0, minChars: 120 });
+  const joined = chunks.map((chunk) => chunk.text).join(" ");
+
+  assert.match(joined, /concrete learning guidance/i);
+  assert.doesNotMatch(joined, /Ð/);
+});

@@ -1,6 +1,8 @@
 import { CourseCreator } from "@/components/course-creator";
+import { listCourses } from "@/lib/course-store";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const history = await listCourses({ limit: 30 });
   return (
     <main className="page-shell stack">
       <section className="hero">
@@ -22,7 +24,7 @@ export default function HomePage() {
         <div className="panel stack">
           <h2>Новый курс</h2>
           <p>Задайте тему, цели и точные численные параметры курса. После генерации можно редактировать каждый экран и вопрос теста.</p>
-          <CourseCreator />
+          <CourseCreator initialHistory={history} />
         </div>
 
         <aside className="stack">
