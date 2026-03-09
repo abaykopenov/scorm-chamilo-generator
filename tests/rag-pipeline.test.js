@@ -1,8 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { chunkText } from "../lib/chunker.js";
 import { isSupportedTextMaterial, parseDocumentText } from "../lib/document-parser.js";
@@ -11,7 +9,7 @@ import { deleteMaterial, getMaterial, getMaterialVectors, saveUploadedMaterial }
 import { cosineSimilarity, searchVectorRecords } from "../lib/vector-search.js";
 
 test("chunkText splits long text into chunks", () => {
-  const text = Array.from({ length: 18 }, (_, index) => `Параграф ${index + 1}. Контент для теста.`).join("\n\n");
+  const text = Array.from({ length: 18 }, (_, index) => `Paragraph ${index + 1}. Content for test.`).join("\n\n");
   const chunks = chunkText(text, { maxChars: 220, overlapChars: 60, minChars: 100 });
 
   assert.ok(chunks.length > 1);
@@ -50,7 +48,7 @@ test("indexMaterialDocument stores vectors and updates material status", async (
   const material = await saveUploadedMaterial({
     fileName: "test-material.txt",
     mimeType: "text/plain",
-    buffer: Buffer.from("Первый абзац.\n\nВторой абзац.\n\nТретий абзац.", "utf8")
+    buffer: Buffer.from("First paragraph.\n\nSecond paragraph.\n\nThird paragraph.", "utf8")
   });
 
   const result = await indexMaterialDocument(material.id, {
@@ -73,27 +71,17 @@ test("indexMaterialDocument stores vectors and updates material status", async (
   assert.equal(vectors?.chunks?.length, result.chunksCount);
 });
 
-test("parseDocumentText extracts text from docx via textutil", () => {
-  const tempDir = mkdtempSync(path.join(tmpdir(), "docx-test-"));
-  const txtPath = path.join(tempDir, "source.txt");
-  const docxPath = path.join(tempDir, "source.docx");
-  const expectedText = "DOCX пример для RAG";
+test("parseDocumentText extracts text from docx via mammoth", async () => {
+  const fixturePath = path.join(process.cwd(), "node_modules", "mammoth", "test", "test-data", "single-paragraph.docx");
+  const buffer = readFileSync(fixturePath);
 
-  try {
-    writeFileSync(txtPath, expectedText, "utf8");
-    execFileSync("/usr/bin/textutil", ["-convert", "docx", txtPath, "-output", docxPath]);
-    const buffer = readFileSync(docxPath);
+  const parsed = await parseDocumentText({
+    fileName: "single-paragraph.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    buffer
+  });
 
-    const parsed = parseDocumentText({
-      fileName: "source.docx",
-      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      buffer
-    });
-
-    assert.ok(parsed.includes(expectedText));
-  } finally {
-    rmSync(tempDir, { recursive: true, force: true });
-  }
+  assert.ok(parsed.includes("Walking on imported air"));
 });
 
 test("isSupportedTextMaterial accepts pdf and docx", () => {
@@ -114,9 +102,9 @@ test("isSupportedTextMaterial accepts pdf and docx", () => {
   );
 });
 
-test("parseDocumentText truncates very large text input", () => {
-  const source = `Ввод\n${"A".repeat(500_000)}\nХвост`;
-  const parsed = parseDocumentText({
+test("parseDocumentText truncates very large text input", async () => {
+  const source = `Intro\n${"A".repeat(500_000)}\nTail`;
+  const parsed = await parseDocumentText({
     fileName: "huge.txt",
     mimeType: "text/plain",
     buffer: Buffer.from(source, "utf8")
@@ -130,7 +118,7 @@ test("deleteMaterial removes file and metadata", async () => {
   const material = await saveUploadedMaterial({
     fileName: "delete-me.txt",
     mimeType: "text/plain",
-    buffer: Buffer.from("Удаляемый материал", "utf8")
+    buffer: Buffer.from("Material to delete", "utf8")
   });
 
   const deleted = await deleteMaterial(material.id);

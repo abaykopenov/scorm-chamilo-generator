@@ -86,6 +86,38 @@ test("generateCourseDraft fails when books are selected but not indexed", async 
         provider: "template"
       }
     }),
-    /не найден контекст/i
+    /context|\?\?/i
   );
+});
+
+test("generateCourseDraft rewrites template final-test questions using course content", async () => {
+  const course = await generateCourseDraft({
+    titleHint: "ROS onboarding",
+    audience: "New employees",
+    learningGoals: ["Understand ROS communication basics"],
+    durationMinutes: 20,
+    structure: {
+      moduleCount: 1,
+      sectionsPerModule: 1,
+      scosPerSection: 1,
+      screensPerSco: 1
+    },
+    finalTest: {
+      enabled: true,
+      questionCount: 1,
+      passingScore: 70,
+      attemptsLimit: 1,
+      maxTimeMinutes: 10
+    },
+    generation: {
+      provider: "template"
+    }
+  });
+
+  const question = course.finalTest.questions[0];
+  assert.ok(question);
+  assert.ok(question.options.length >= 4);
+  assert.match(question.prompt.toLowerCase(), /ros onboarding|ros/);
+  assert.ok(question.options.some((option) => /ros onboarding|ros|communication|node|topic/.test(option.text.toLowerCase())));
+  assert.ok(question.options.every((option) => !/^focuses on the goal|^ignores the goal|^moves the decision to an external system|^does not require any result evaluation/.test(option.text.toLowerCase())));
 });

@@ -23,6 +23,14 @@ function parseGoals(value) {
     .filter(Boolean);
 }
 
+function parseStreamEvent(line) {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return null;
+  }
+}
+
 function formatFileSize(bytes) {
   const size = Number(bytes) || 0;
   if (size < 1024) {
@@ -33,6 +41,22 @@ function formatFileSize(bytes) {
   }
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+const MAX_UPLOAD_FILE_SIZE_MB = 50;
+const MAX_UPLOAD_FILE_SIZE = MAX_UPLOAD_FILE_SIZE_MB * 1024 * 1024;
+const MAX_UPLOAD_FILES = 10;
+const MATERIAL_CHUNKS_PAGE_SIZE = 12;
+const MATERIAL_CHUNK_PREVIEW_CHARS = 420;
+const GENERATION_STAGE_LABELS = {
+  request: "Preparing request",
+  input: "Validating input",
+  rag: "Building context",
+  "llm-outline": "Generating outline",
+  "llm-line-plan": "Building line plan",
+  finalize: "Finalizing course",
+  saving: "Saving course",
+  done: "Completed"
+};
 
 export function CourseCreator() {
   const router = useRouter();
@@ -46,6 +70,22 @@ export function CourseCreator() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [selectedMaterialIds, setSelectedMaterialIds] = useState(defaults.rag.documentIds);
   const [materialsMessage, setMaterialsMessage] = useState("");
+  const [expandedMaterialId, setExpandedMaterialId] = useState("");
+  const [materialChunksState, setMaterialChunksState] = useState({});
+  const [generationProgress, setGenerationProgress] = useState({
+    active: false,
+    percent: 0,
+    stage: "",
+    message: ""
+  });
+  const [qdrantStatus, setQdrantStatus] = useState({
+    loading: true,
+    ok: false,
+    mode: "fallback",
+    message: "Checking Qdrant...",
+    checkedAt: "",
+    target: null
+  });
 
   const [form, setForm] = useState({
     titleHint: defaults.titleHint,
@@ -84,6 +124,40 @@ export function CourseCreator() {
     return fallback;
   }
 
+  async function checkQdrantStatus() {
+    setQdrantStatus((current) => ({
+      ...current,
+      loading: true
+    }));
+
+    try {
+      const response = await fetch("/api/diagnostics/qdrant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      setQdrantStatus({
+        loading: false,
+        ok: Boolean(payload?.ok),
+        mode: payload?.mode === "connected" ? "connected" : "fallback",
+        message: payload?.message || (payload?.ok ? "Qdrant connected." : "Local vector fallback is active."),
+        checkedAt: `${payload?.checkedAt || ""}`.trim(),
+        target: payload?.target || null
+      });
+    } catch (error) {
+      setQdrantStatus({
+        loading: false,
+        ok: false,
+        mode: "fallback",
+        message: resolveErrorMessage(error, "Qdrant check failed. Local vector fallback is active."),
+        checkedAt: new Date().toISOString(),
+        target: null
+      });
+    }
+  }
+
   async function refreshMaterials() {
     try {
       const response = await fetch("/api/materials");
@@ -94,6 +168,17 @@ export function CourseCreator() {
       const items = Array.isArray(payload?.materials) ? payload.materials : [];
       setMaterials(items);
       setSelectedMaterialIds((current) => current.filter((id) => items.some((item) => item.id === id)));
+      setMaterialChunksState((current) => {
+        const allowedIds = new Set(items.map((item) => item.id));
+        const next = {};
+        for (const [materialId, state] of Object.entries(current)) {
+          if (allowedIds.has(materialId)) {
+            next[materialId] = state;
+          }
+        }
+        return next;
+      });
+      setExpandedMaterialId((current) => (items.some((item) => item.id === current) ? current : ""));
       return items;
     } catch (error) {
       throw new Error(resolveErrorMessage(error, "Ошибка загрузки списка материалов."));
@@ -102,9 +187,82 @@ export function CourseCreator() {
 
   useEffect(() => {
     refreshMaterials().catch(() => {
-      setMaterialsMessage("Не удалось загрузить список материалов.");
+      setMaterialsMessage("Failed to load materials list.");
     });
+    checkQdrantStatus();
   }, []);
+
+  async function loadMaterialChunks(materialId, options = {}) {
+    const append = Boolean(options?.append);
+    const current = materialChunksState[materialId];
+    const offset = append ? (current?.items?.length || 0) : 0;
+
+    setMaterialChunksState((state) => ({
+      ...state,
+      [materialId]: {
+        ...(state[materialId] || { items: [], total: 0, hasMore: false }),
+        loading: true,
+        error: ""
+      }
+    }));
+
+    try {
+      const params = new URLSearchParams({
+        offset: String(offset),
+        limit: String(MATERIAL_CHUNKS_PAGE_SIZE),
+        previewChars: String(MATERIAL_CHUNK_PREVIEW_CHARS)
+      });
+
+      const response = await fetch("/api/materials/" + materialId + "/chunks?" + params.toString());
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to load material chunks.");
+      }
+
+      const incoming = Array.isArray(payload?.chunks) ? payload.chunks : [];
+      const total = Number(payload?.pagination?.total) || incoming.length;
+      const hasMore = Boolean(payload?.pagination?.hasMore);
+
+      setMaterialChunksState((state) => {
+        const previous = state[materialId] || { items: [] };
+        const items = append ? [...(previous.items || []), ...incoming] : incoming;
+
+        return {
+          ...state,
+          [materialId]: {
+            loading: false,
+            error: "",
+            items,
+            total,
+            hasMore
+          }
+        };
+      });
+    } catch (error) {
+      setMaterialChunksState((state) => ({
+        ...state,
+        [materialId]: {
+          ...(state[materialId] || { items: [], total: 0, hasMore: false }),
+          loading: false,
+          error: resolveErrorMessage(error, "Failed to load chunks.")
+        }
+      }));
+    }
+  }
+
+  function toggleMaterialChunks(materialId) {
+    if (expandedMaterialId === materialId) {
+      setExpandedMaterialId("");
+      return;
+    }
+
+    setExpandedMaterialId(materialId);
+
+    const current = materialChunksState[materialId];
+    if (!current || (current.items || []).length === 0) {
+      loadMaterialChunks(materialId).catch(() => {});
+    }
+  }
 
   function toggleMaterialSelection(materialId) {
     setSelectedMaterialIds((current) => {
@@ -116,8 +274,26 @@ export function CourseCreator() {
   }
 
   function onFilesPicked(event) {
-    setSelectedFiles(Array.from(event.target.files || []));
-    setMaterialsMessage("");
+    const pickedFiles = Array.from(event.target.files || []);
+
+    let nextFiles = pickedFiles;
+    const notices = [];
+
+    if (nextFiles.length > MAX_UPLOAD_FILES) {
+      nextFiles = nextFiles.slice(0, MAX_UPLOAD_FILES);
+      notices.push(`You can select up to ${MAX_UPLOAD_FILES} files at once.`);
+    }
+
+    const oversized = nextFiles.filter((file) => file.size > MAX_UPLOAD_FILE_SIZE);
+    if (oversized.length > 0) {
+      const skippedNames = oversized.slice(0, 3).map((file) => file.name).join(", ");
+      const extra = oversized.length > 3 ? " and more" : "";
+      notices.push(`Skipped files larger than ${MAX_UPLOAD_FILE_SIZE_MB} MB: ${skippedNames}${extra}.`);
+      nextFiles = nextFiles.filter((file) => file.size <= MAX_UPLOAD_FILE_SIZE);
+    }
+
+    setSelectedFiles(nextFiles);
+    setMaterialsMessage(notices.join(" "));
   }
 
   function deleteMaterialById(materialId) {
@@ -141,6 +317,12 @@ export function CourseCreator() {
         }
 
         setSelectedMaterialIds((current) => current.filter((id) => id !== materialId));
+        setMaterialChunksState((current) => {
+          const next = { ...current };
+          delete next[materialId];
+          return next;
+        });
+        setExpandedMaterialId((current) => (current === materialId ? "" : current));
         await refreshMaterials();
         setMaterialsMessage(`Материал "${label}" удален.`);
       } catch (error) {
@@ -151,7 +333,18 @@ export function CourseCreator() {
 
   function uploadSelectedFiles() {
     if (selectedFiles.length === 0) {
-      setMaterialsMessage("Выберите хотя бы один файл.");
+      setMaterialsMessage("Select at least one file.");
+      return;
+    }
+
+    if (selectedFiles.length > MAX_UPLOAD_FILES) {
+      setMaterialsMessage(`You can upload up to ${MAX_UPLOAD_FILES} files at once.`);
+      return;
+    }
+
+    const tooLargeFile = selectedFiles.find((file) => file.size > MAX_UPLOAD_FILE_SIZE);
+    if (tooLargeFile) {
+      setMaterialsMessage(`File "${tooLargeFile.name}" is larger than ${MAX_UPLOAD_FILE_SIZE_MB} MB.`);
       return;
     }
 
@@ -231,9 +424,11 @@ export function CourseCreator() {
         }
 
         await refreshMaterials();
+        const qdrantMode = payload?.qdrant?.connected ? "connected" : "fallback";
         setMaterialsMessage(
-          `Индексация завершена. Успешно: ${payload.indexed ?? 0}, ошибок: ${payload.failed ?? 0}.`
+          `Indexing completed. Success: ${payload.indexed ?? 0}, failed: ${payload.failed ?? 0}. Qdrant: ${qdrantMode}.`
         );
+        await checkQdrantStatus();
       } catch (error) {
         setMaterialsMessage(resolveErrorMessage(error, "Ошибка сети при индексации."));
       }
@@ -270,6 +465,45 @@ export function CourseCreator() {
     });
   }
 
+  function getGenerationPayload() {
+    return {
+      titleHint: form.titleHint,
+      audience: form.audience,
+      learningGoals: parseGoals(form.learningGoals),
+      durationMinutes: Number(form.durationMinutes),
+      language: form.language,
+      structure: {
+        moduleCount: Number(form.moduleCount),
+        sectionsPerModule: Number(form.sectionsPerModule),
+        scosPerSection: Number(form.scosPerSection),
+        screensPerSco: Number(form.screensPerSco)
+      },
+      finalTest: {
+        enabled: Boolean(form.finalTestEnabled),
+        questionCount: Number(form.questionCount),
+        passingScore: Number(form.passingScore),
+        attemptsLimit: Number(form.attemptsLimit),
+        maxTimeMinutes: Number(form.maxTimeMinutes)
+      },
+      generation: {
+        provider: form.generationProvider,
+        baseUrl: form.generationBaseUrl,
+        model: form.generationModel,
+        temperature: toSafeNumber(form.generationTemperature, defaults.generation.temperature, 0, 1)
+      },
+      rag: {
+        enabled: Boolean(form.ragEnabled),
+        topK: toSafeNumber(form.ragTopK, defaults.rag.topK, 1, 30),
+        documentIds: selectedMaterialIds,
+        embedding: {
+          provider: form.embeddingProvider,
+          baseUrl: form.embeddingBaseUrl,
+          model: form.embeddingModel
+        }
+      }
+    };
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
@@ -280,70 +514,111 @@ export function CourseCreator() {
       const notIndexed = selected.filter((item) => item.status !== "indexed");
       if (notIndexed.length > 0) {
         setError(
-          `Сначала проиндексируйте выбранные книги. Не готовы: ${notIndexed
-            .slice(0, 3)
-            .map((item) => item.fileName)
-            .join(", ")}${notIndexed.length > 3 ? "..." : ""}`
+          "Please index selected materials first. Not ready: " +
+            notIndexed.slice(0, 3).map((item) => item.fileName).join(", ") +
+            (notIndexed.length > 3 ? "..." : "")
         );
         return;
       }
     }
 
-    startTransition(async () => {
-      try {
-        const response = await fetch("/api/courses/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            titleHint: form.titleHint,
-            audience: form.audience,
-            learningGoals: parseGoals(form.learningGoals),
-            durationMinutes: Number(form.durationMinutes),
-            language: form.language,
-            structure: {
-              moduleCount: Number(form.moduleCount),
-              sectionsPerModule: Number(form.sectionsPerModule),
-              scosPerSection: Number(form.scosPerSection),
-              screensPerSco: Number(form.screensPerSco)
-            },
-            finalTest: {
-              enabled: Boolean(form.finalTestEnabled),
-              questionCount: Number(form.questionCount),
-              passingScore: Number(form.passingScore),
-              attemptsLimit: Number(form.attemptsLimit),
-              maxTimeMinutes: Number(form.maxTimeMinutes)
-            },
-            generation: {
-              provider: form.generationProvider,
-              baseUrl: form.generationBaseUrl,
-              model: form.generationModel,
-              temperature: toSafeNumber(form.generationTemperature, defaults.generation.temperature, 0, 1)
-            },
-            rag: {
-              enabled: Boolean(form.ragEnabled),
-              topK: toSafeNumber(form.ragTopK, defaults.rag.topK, 1, 30),
-              documentIds: selectedMaterialIds,
-              embedding: {
-                provider: form.embeddingProvider,
-                baseUrl: form.embeddingBaseUrl,
-                model: form.embeddingModel
-              }
-            }
-          })
-        });
+    setGenerationProgress({
+      active: true,
+      percent: 0,
+      stage: "request",
+      message: GENERATION_STAGE_LABELS.request
+    });
 
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          setError(payload?.message || "Не удалось сгенерировать курс.");
+    try {
+      const response = await fetch("/api/courses/generate?stream=1", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(getGenerationPayload())
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.message || "Failed to generate course.");
+      }
+
+      if (!response.body) {
+        throw new Error("Generation stream is unavailable.");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let generatedCourse = null;
+
+      const applyEvent = (streamEvent) => {
+        if (!streamEvent || typeof streamEvent !== "object") {
           return;
         }
 
-        const course = await response.json();
-        router.push(`/courses/${course.id}`);
-      } catch (error) {
-        setError(resolveErrorMessage(error, "Ошибка сети при генерации курса."));
+        if (streamEvent.type === "progress") {
+          const percent = toSafeNumber(streamEvent.percent, 0, 0, 100);
+          const stage = String(streamEvent.stage || "");
+          const message = String(streamEvent.message || "").trim() || GENERATION_STAGE_LABELS[stage] || "Course generation";
+          setGenerationProgress({
+            active: true,
+            percent: Math.trunc(percent),
+            stage,
+            message
+          });
+          return;
+        }
+
+        if (streamEvent.type === "error") {
+          throw new Error(streamEvent.message || "Failed to generate course.");
+        }
+
+        if (streamEvent.type === "done") {
+          generatedCourse = streamEvent.course || null;
+          setGenerationProgress({
+            active: true,
+            percent: 100,
+            stage: "done",
+            message: GENERATION_STAGE_LABELS.done
+          });
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            continue;
+          }
+          applyEvent(parseStreamEvent(trimmed));
+        }
       }
-    });
+
+      const tail = (buffer + decoder.decode()).trim();
+      if (tail) {
+        applyEvent(parseStreamEvent(tail));
+      }
+
+      if (!generatedCourse?.id) {
+        throw new Error("Generation finished without a course result.");
+      }
+
+      router.push("/courses/" + generatedCourse.id);
+    } catch (error) {
+      setError(resolveErrorMessage(error, "Network error during course generation."));
+      setGenerationProgress((current) => ({
+        ...current,
+        active: false
+      }));
+    }
   }
 
   return (
@@ -452,7 +727,20 @@ export function CourseCreator() {
         </div>
 
         <div className="field">
-          <label htmlFor="rag-files">Загрузить файлы</label>
+          <label htmlFor="rag-files" className="label-with-help">
+            <span>Upload files</span>
+            <button
+              type="button"
+              className="help-icon"
+              aria-label="Upload limits"
+              title="Upload limits"
+            >
+              ?
+            </button>
+            <span className="help-tooltip">
+              Up to 10 files per upload, 50 MB maximum per file.
+            </span>
+          </label>
           <input
             ref={fileInputRef}
             id="rag-files"
@@ -482,6 +770,9 @@ export function CourseCreator() {
           >
             Обновить список
           </button>
+          <button className="link-button" type="button" onClick={checkQdrantStatus} disabled={isPending || qdrantStatus.loading}>
+            Check Qdrant
+          </button>
         </div>
 
         {selectedFiles.length > 0 ? (
@@ -493,6 +784,14 @@ export function CourseCreator() {
         {materialsMessage ? (
           <div className="status success">{materialsMessage}</div>
         ) : null}
+
+        <div className={qdrantStatus.ok ? "status success" : "status warning"}>
+          <strong>Vector DB (Qdrant): </strong>
+          {qdrantStatus.loading ? "checking..." : qdrantStatus.mode}
+          {". "}
+          {qdrantStatus.message}
+          {qdrantStatus.target?.baseUrl ? ` (${qdrantStatus.target.baseUrl})` : ""}
+        </div>
 
         <div className="materials-list">
           {materials.length === 0 ? (
@@ -508,23 +807,109 @@ export function CourseCreator() {
                 <div className="material-item-body">
                   <strong>{material.fileName}</strong>
                   <span className="meta">
-                    {formatFileSize(material.size)} · {material.status} · chunks: {material.chunksCount || 0}
+                    {formatFileSize(material.size)} - {material.status} - chunks: {material.chunksCount || 0}
                   </span>
                   {material.errorMessage ? <span className="status warning">{material.errorMessage}</span> : null}
                   <div className="material-item-actions">
                     <button
                       type="button"
+                      className="ghost-button compact-button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        toggleMaterialChunks(material.id);
+                      }}
+                      disabled={isPending || material.status !== "indexed"}
+                      title={material.status === "indexed" ? "" : "Index material first"}
+                    >
+                      {expandedMaterialId === material.id ? "Hide chunks" : "Show chunks"}
+                    </button>
+                    <button
+                      type="button"
                       className="delete-button"
-                      onClick={() => deleteMaterialById(material.id)}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        deleteMaterialById(material.id);
+                      }}
                       disabled={isPending}
                     >
-                      Удалить файл
+                      Delete file
                     </button>
                   </div>
+
+                  {expandedMaterialId === material.id ? (
+                    <div
+                      className="chunks-viewer"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                    >
+                      {materialChunksState[material.id]?.loading && !(materialChunksState[material.id]?.items?.length > 0) ? (
+                        <div className="status">Loading chunks...</div>
+                      ) : null}
+
+                      {materialChunksState[material.id]?.error ? (
+                        <div className="status warning">{materialChunksState[material.id].error}</div>
+                      ) : null}
+
+                      {materialChunksState[material.id]?.items?.length > 0 ? (
+                        <div className="chunk-preview-list">
+                          {materialChunksState[material.id].items.map((chunk) => (
+                            <article key={chunk.id || ("chunk-" + chunk.order)} className="chunk-preview-item">
+                              <div className="chunk-preview-head">
+                                <strong>Chunk #{chunk.order || "?"}</strong>
+                                <span className="meta">{chunk.length || 0} chars</span>
+                              </div>
+                              <p>
+                                {chunk.preview}
+                                {chunk.truncated ? "..." : ""}
+                              </p>
+                            </article>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {!materialChunksState[material.id]?.loading &&
+                      !materialChunksState[material.id]?.error &&
+                      !(materialChunksState[material.id]?.items?.length > 0) ? (
+                        <p className="note">Chunks not found. Run indexing first.</p>
+                      ) : null}
+
+                      <div className="material-item-actions">
+                        {materialChunksState[material.id]?.hasMore ? (
+                          <button
+                            type="button"
+                            className="link-button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              loadMaterialChunks(material.id, { append: true });
+                            }}
+                            disabled={isPending || materialChunksState[material.id]?.loading}
+                          >
+                            Show more
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setExpandedMaterialId("");
+                          }}
+                        >
+                          Collapse
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </label>
             ))
-          )}
+)}
         </div>
       </div>
 
@@ -644,10 +1029,24 @@ export function CourseCreator() {
       </div>
 
       {error ? <div className="status warning">{error}</div> : null}
+      {generationProgress.active ? (
+        <div className="generation-progress" role="status" aria-live="polite">
+          <div className="generation-progress-head">
+            <strong>{generationProgress.message || "Course generation"}</strong>
+            <span>{generationProgress.percent}%</span>
+          </div>
+          <div className="generation-progress-track">
+            <div
+              className="generation-progress-fill"
+              style={{ width: String(generationProgress.percent) + "%" }}
+            />
+          </div>
+        </div>
+      ) : null}
 
       <div className="actions">
-        <button className="button" type="submit" disabled={isPending}>
-          {isPending ? "Генерация..." : "Сгенерировать курс"}
+        <button className="button" type="submit" disabled={isPending || generationProgress.active}>
+          {generationProgress.active ? "Generating... " + generationProgress.percent + "%" : "Generate course"}
         </button>
       </div>
     </form>

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { isSupportedTextMaterial } from "@/lib/document-parser";
 import { saveUploadedMaterial } from "@/lib/material-store";
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_FILE_SIZE_MB = 50;
+const MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 export async function POST(request) {
   try {
@@ -19,7 +20,7 @@ export async function POST(request) {
 
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { ok: false, message: `File is too large. Max size is ${MAX_FILE_SIZE / (1024 * 1024)} MB.` },
+        { ok: false, message: `File is too large. Max size is ${MAX_FILE_SIZE_MB} MB.` },
         { status: 413 }
       );
     }

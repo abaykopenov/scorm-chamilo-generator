@@ -7,19 +7,23 @@ const nextConfig = {
   allowedDevOrigins: [
     "localhost",
     "127.0.0.1",
-    "100.66.245.31"
+    "100.66.245.31",
+    "100.70.109.122"
   ],
   webpack: (config, { dev }) => {
     if (dev) {
       const existingIgnored = config.watchOptions?.ignored;
       const ignoredList = Array.isArray(existingIgnored)
-        ? existingIgnored
-        : (existingIgnored ? [existingIgnored] : []);
+        ? existingIgnored.filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+        : (typeof existingIgnored === "string" && existingIgnored.trim().length > 0
+            ? [existingIgnored]
+            : []);
+      const defaultIgnored = ["**/node_modules/**", "**/.git/**", "**/.next/**", "**/.ref_repo/**", "**/._*", "**/.DS_Store"];
 
       // RAG artifacts are written under .data; avoid dev-server rebuild loops/chunk races.
       config.watchOptions = {
         ...(config.watchOptions || {}),
-        ignored: [...ignoredList, "**/.data/**"]
+        ignored: [...new Set([...ignoredList, ...defaultIgnored, "**/.data/**"])]
       };
     }
     return config;
@@ -27,3 +31,4 @@ const nextConfig = {
 };
 
 export default nextConfig;
+

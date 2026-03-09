@@ -18,6 +18,19 @@ export async function POST(request, { params }) {
 
   try {
     const connection = await connectToChamilo({ profile });
+    const courses = Array.isArray(connection.courses) ? [...connection.courses] : [];
+    if (profile.courseCode && !courses.some((courseOption) => `${courseOption?.code || ""}`.trim() === profile.courseCode)) {
+      courses.unshift({
+        code: profile.courseCode,
+        title: `Manual course code (${profile.courseCode})`,
+        url: profile.baseUrl || ""
+      });
+    }
+
+    const connectionMessage = connection.uploadUrl
+      ? `Upload page found: ${connection.uploadUrl}. Courses found: ${courses.length}.`
+      : `Connected to Chamilo. Courses found: ${courses.length}.`;
+
     const updatedCourse = normalizeCoursePayload({
       ...course,
       integrations: {
@@ -31,7 +44,7 @@ export async function POST(request, { params }) {
           uploadPagePath: profile.uploadPagePath,
           loginPath: profile.loginPath,
           lastConnectionStatus: "connected",
-          lastConnectionMessage: `Upload page found: ${connection.uploadUrl}`,
+          lastConnectionMessage: connectionMessage,
           lastConnectedAt: new Date().toISOString()
         }
       }
@@ -42,7 +55,7 @@ export async function POST(request, { params }) {
     return NextResponse.json({
       ok: true,
       profile: updatedCourse.integrations.chamilo,
-      courses: connection.courses,
+      courses,
       uploadUrl: connection.uploadUrl,
       uploadPageTitle: connection.uploadPageTitle
     });

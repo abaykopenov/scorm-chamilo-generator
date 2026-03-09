@@ -177,26 +177,37 @@ export function CourseEditor({ initialCourse }) {
   }
 
   function syncChamiloStateFromProfile(profile, availableCourses = null) {
-    const parsedBaseUrl = parseChamiloBaseUrl(profile.baseUrl || "");
-    setChamilo((current) => ({
+  const parsedBaseUrl = parseChamiloBaseUrl(profile.baseUrl || "");
+  setChamilo((current) => {
+    const baseCourses = Array.isArray(availableCourses) ? availableCourses : current.courses;
+    const selectedCode = `${profile?.courseCode || current.courseCode || ""}`.trim();
+    const hasSelected = selectedCode
+      ? baseCourses.some((courseOption) => `${courseOption?.code || ""}`.trim() === selectedCode)
+      : true;
+    const nextCourses = hasSelected
+      ? baseCourses
+      : [{ code: selectedCode, title: `Manual course code (${selectedCode})`, url: profile.baseUrl || current.baseUrl || "" }, ...baseCourses];
+
+    return {
       ...current,
       ...profile,
       protocol: parsedBaseUrl.protocol,
       host: parsedBaseUrl.host,
-      courses: availableCourses ?? current.courses,
+      courses: nextCourses,
       password: current.password
-    }));
+    };
+  });
 
-    updateCourse((draft) => {
-      draft.integrations ||= {};
-      draft.integrations.chamilo = {
-        ...(draft.integrations.chamilo || {}),
-        ...profile
-      };
-    });
-  }
+  updateCourse((draft) => {
+    draft.integrations ||= {};
+    draft.integrations.chamilo = {
+      ...(draft.integrations.chamilo || {}),
+      ...profile
+    };
+  });
+}
 
-  function saveCourse() {
+function saveCourse() {
     setError("");
     setMessage("");
 
@@ -277,7 +288,10 @@ export function CourseEditor({ initialCourse }) {
 
       const payload = await response.json();
       if (!response.ok) {
-        setError(payload.error || "Не удалось опубликовать пакет в Chamilo.");
+        if (payload.published) {
+          setPublishResult(payload.published);
+        }
+        setError(payload.error || "Failed to publish package to Chamilo.");
         return;
       }
 
@@ -288,7 +302,14 @@ export function CourseEditor({ initialCourse }) {
         scoCount: payload.scoCount
       });
       setPublishResult(payload.published);
-      setMessage(payload.published.ok ? "SCORM-пакет загружен в Chamilo." : "Chamilo ответил без подтверждения успеха.");
+      const exerciseMessage = payload.exercise
+        ? (payload.exercise.ok
+            ? ` Native test created (exerciseId=${payload.exercise.exerciseId}, questions=${payload.exercise.questionCount}).`
+            : ` Native test was not created: ${payload.exercise.message || "unknown reason"}.`)
+        : "";
+      setMessage(payload.published.ok
+        ? `${payload.published.message ? `SCORM package uploaded to Chamilo. ${payload.published.message}` : "SCORM package uploaded to Chamilo."}${exerciseMessage}`
+        : (payload.published.message || "Chamilo did not confirm successful import."));
     });
   }
 
@@ -446,6 +467,9 @@ export function CourseEditor({ initialCourse }) {
           {publishResult ? (
             <div className={publishResult.ok ? "status success" : "status warning"}>
               HTTP {publishResult.status}. Upload URL: {publishResult.uploadUrl}
+              {publishResult.responseUrl ? ` -> ${publishResult.responseUrl}` : ""}
+              {Number.isFinite(publishResult.attemptCount) ? ` | Attempts: ${publishResult.attemptCount}` : ""}
+              {publishResult.message ? ` | ${publishResult.message}` : ""}
             </div>
           ) : null}
         </article>
@@ -633,6 +657,14 @@ export function CourseEditor({ initialCourse }) {
                 ))}
               </select>
             </div>
+            <div className="field">
+              <label>Course code (manual)</label>
+              <input
+                placeholder="COURSE_CODE"
+                value={chamilo.courseCode}
+                onChange={(event) => updateChamiloField("courseCode", event.target.value)}
+              />
+            </div>
           </div>
           <div className="actions">
             <button className="ghost-button" type="button" onClick={connectChamilo} disabled={isPending}>
@@ -749,3 +781,4 @@ export function CourseEditor({ initialCourse }) {
     </div>
   );
 }
+

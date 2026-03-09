@@ -1,0 +1,130 @@
+﻿{
+  "meta": {
+    "name": "SCORM RAG Deck",
+    "version": "1.0.0",
+    "frame": "1920x1080",
+    "grid": {
+      "columns": 12,
+      "margin": 120,
+      "gutter": 24,
+      "baseline": 8
+    }
+  },
+  "colors": {
+    "bg.canvas": "#F4F8FF",
+    "bg.card": "#FFFFFF",
+    "ink.primary": "#0D1B2A",
+    "ink.secondary": "#334155",
+    "line.soft": "#D7E2F0",
+    "brand.primary": "#0057FF",
+    "brand.secondary": "#00A3A3",
+    "brand.accent": "#FF7A00",
+    "state.success": "#159957",
+    "state.warning": "#D98E04",
+    "state.danger": "#C7382A"
+  },
+  "gradients": {
+    "hero": {
+      "type": "linear",
+      "angle": 135,
+      "stops": [
+        "#0057FF",
+        "#00A3A3"
+      ]
+    },
+    "accent": {
+      "type": "linear",
+      "angle": 135,
+      "stops": [
+        "#00A3A3",
+        "#7FD7D7"
+      ]
+    }
+  },
+  "typography": {
+    "display.xl": {
+      "fontFamily": "Sora",
+      "fontWeight": 700,
+      "fontSize": 72,
+      "lineHeight": 78
+    },
+    "h1": {
+      "fontFamily": "Sora",
+      "fontWeight": 700,
+      "fontSize": 52,
+      "lineHeight": 58
+    },
+    "h2": {
+      "fontFamily": "Sora",
+      "fontWeight": 700,
+      "fontSize": 40,
+      "lineHeight": 46
+    },
+    "h3": {
+      "fontFamily": "Sora",
+      "fontWeight": 600,
+      "fontSize": 30,
+      "lineHeight": 36
+    },
+    "body.l": {
+      "fontFamily": "Manrope",
+      "fontWeight": 500,
+      "fontSize": 26,
+      "lineHeight": 36
+    },
+    "body.m": {
+      "fontFamily": "Manrope",
+      "fontWeight": 500,
+      "fontSize": 22,
+      "lineHeight": 30
+    },
+    "body.s": {
+      "fontFamily": "Manrope",
+      "fontWeight": 500,
+      "fontSize": 18,
+      "lineHeight": 26
+    },
+    "meta": {
+      "fontFamily": "IBM Plex Mono",
+      "fontWeight": 500,
+      "fontSize": 16,
+      "lineHeight": 22
+    }
+  },
+  "radius": {
+    "card": 24,
+    "chip": 14,
+    "tiny": 10
+  },
+  "effects": {
+    "cardShadow": "0 12 30 rgba(13,27,42,0.08)",
+    "elevatedShadow": "0 18 44 rgba(13,27,42,0.12)"
+  },
+  "spacing": {
+    "2": 8,
+    "3": 12,
+    "4": 16,
+    "5": 20,
+    "6": 24,
+    "8": 32,
+    "10": 40,
+    "12": 48,
+    "16": 64
+  },
+  "components": {
+    "chip": {
+      "padding": "8 14",
+      "radius": 14
+    },
+    "card": {
+      "padding": 24,
+      "radius": 24,
+      "border": "1px solid #D7E2F0"
+    },
+    "metricCard": {
+      "padding": 28,
+      "radius": 24,
+      "shadow": "cardShadow"
+    }
+  }
+}
