@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -102,6 +102,8 @@ export function CourseCreator({ initialHistory = [] }) {
   const [generationHistory, setGenerationHistory] = useState(
     Array.isArray(initialHistory) ? initialHistory : []
   );
+  const [historyVisible, setHistoryVisible] = useState(true);
+  const [hideCompletedHistory, setHideCompletedHistory] = useState(false);
   const [moduleStreamState, setModuleStreamState] = useState({
     courseId: "",
     completedModules: 0,
@@ -738,6 +740,10 @@ export function CourseCreator({ initialHistory = [] }) {
     }
   }
 
+  const visibleGenerationHistory = hideCompletedHistory
+    ? generationHistory.filter((item) => item?.generationStatus !== "completed")
+    : generationHistory;
+
   return (
     <form className="stack" onSubmit={handleSubmit}>
       <div className="field-grid">
@@ -1168,21 +1174,45 @@ export function CourseCreator({ initialHistory = [] }) {
       <div className="panel stack">
         <div className="tree-header">
           <h3>Generation history</h3>
-          <button
-            className="link-button"
-            type="button"
-            onClick={refreshGenerationHistory}
-            disabled={historyLoading || generationProgress.active}
-          >
-            {historyLoading ? "Refreshing..." : "Refresh"}
-          </button>
+          <div className="actions">
+            <button
+              className="link-button"
+              type="button"
+              onClick={() => setHistoryVisible((current) => !current)}
+              disabled={generationProgress.active}
+            >
+              {historyVisible ? "Hide history" : "Show history"}
+            </button>
+            <button
+              className="link-button"
+              type="button"
+              onClick={() => setHideCompletedHistory((current) => !current)}
+              disabled={generationProgress.active || !historyVisible}
+            >
+              {hideCompletedHistory ? "Show completed" : "Hide completed"}
+            </button>
+            <button
+              className="link-button"
+              type="button"
+              onClick={refreshGenerationHistory}
+              disabled={historyLoading || generationProgress.active}
+            >
+              {historyLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
         </div>
 
-        {generationHistory.length === 0 ? (
-          <p className="note">No generated courses yet.</p>
+        {!historyVisible ? (
+          <p className="note">Generation history is hidden.</p>
+        ) : visibleGenerationHistory.length === 0 ? (
+          <p className="note">
+            {generationHistory.length === 0
+              ? "No generated courses yet."
+              : "All completed generations are hidden."}
+          </p>
         ) : (
           <div className="generation-history-list">
-            {generationHistory.map((historyItem) => (
+            {visibleGenerationHistory.map((historyItem) => (
               <article key={historyItem.id} className="generation-history-item">
                 <div className="generation-history-head">
                   <strong>{historyItem.title || "Untitled course"}</strong>
@@ -1228,3 +1258,5 @@ export function CourseCreator({ initialHistory = [] }) {
     </form>
   );
 }
+
+

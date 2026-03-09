@@ -1,3 +1,4 @@
+﻿import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CourseEditor } from "@/components/course-editor";
 import { getCourse } from "@/lib/course-store";
@@ -12,6 +13,11 @@ export default async function CoursePage({ params }) {
   return (
     <main className="page-shell stack">
       <section className="hero">
+        <div className="actions">
+          <Link className="link-button" href="/">
+            Назад к генератору
+          </Link>
+        </div>
         <span className="eyebrow">Course Workspace</span>
         <h1>{course.title}</h1>
         <p>{course.description}</p>
