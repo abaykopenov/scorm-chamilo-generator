@@ -120,6 +120,7 @@ export function CourseEditor({ initialCourse }) {
   const [error, setError] = useState("");
   const [exportResult, setExportResult] = useState(null);
   const [publishResult, setPublishResult] = useState(null);
+  const [testPublishResult, setTestPublishResult] = useState(null);
   const [isPending, startTransition] = useTransition();
   const [regenerationTarget, setRegenerationTarget] = useState("");
   const [structure, setStructure] = useState({
@@ -130,6 +131,13 @@ export function CourseEditor({ initialCourse }) {
   });
   const [chamilo, setChamilo] = useState(createChamiloState(initialCourse));
   const summary = useMemo(() => summarize(course), [course]);
+  const canPublishTest = Boolean(
+    chamilo.baseUrl &&
+    chamilo.courseCode &&
+    course.finalTest?.enabled &&
+    Array.isArray(course.finalTest?.questions) &&
+    course.finalTest.questions.length > 0
+  );
 
   function updateCourse(mutator) {
     setCourse((current) => {
@@ -335,6 +343,7 @@ function saveCourse() {
     setError("");
     setMessage("");
     setPublishResult(null);
+    setTestPublishResult(null);
 
     startTransition(async () => {
       const response = await fetch(`/api/courses/${course.id}/publish-chamilo`, {
@@ -372,10 +381,44 @@ function saveCourse() {
     });
   }
 
+  function publishTestToChamilo() {
+    setError("");
+    setMessage("");
+    setTestPublishResult(null);
+
+    startTransition(async () => {
+      const response = await fetch(`/api/courses/${course.id}/publish-chamilo-test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile: chamilo
+        })
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setTestPublishResult(payload);
+        setError(payload.error || "Failed to upload test to Chamilo.");
+        return;
+      }
+
+      setTestPublishResult(payload);
+      const exerciseId = payload?.exercise?.exerciseId;
+      const questionCount = payload?.exercise?.questionCount;
+      const lpStatus = payload?.lpLinked?.ok
+        ? "Exercise linked to learning path."
+        : (payload?.lpLinked?.error ? `Learning path link failed: ${payload.lpLinked.error}` : "Learning path link was skipped.");
+      setMessage(
+        `Native test uploaded to Chamilo (exerciseId=${exerciseId || "n/a"}${Number.isFinite(questionCount) ? `, questions=${questionCount}` : ""}). ${lpStatus}`
+      );
+    });
+  }
+
   function connectChamilo() {
     setError("");
     setMessage("");
     setPublishResult(null);
+    setTestPublishResult(null);
 
     startTransition(async () => {
       const response = await fetch(`/api/courses/${course.id}/connect-chamilo`, {
@@ -522,6 +565,9 @@ function saveCourse() {
             <button className="button" type="button" onClick={publishToChamilo} disabled={isPending || !chamilo.baseUrl}>
               Отправить в Chamilo
             </button>
+            <button className="ghost-button" type="button" onClick={publishTestToChamilo} disabled={isPending || !canPublishTest}>
+              Upload test only
+            </button>
           </div>
           {publishResult ? (
             <div className={publishResult.ok ? "status success" : "status warning"}>
@@ -529,6 +575,18 @@ function saveCourse() {
               {publishResult.responseUrl ? ` -> ${publishResult.responseUrl}` : ""}
               {Number.isFinite(publishResult.attemptCount) ? ` | Attempts: ${publishResult.attemptCount}` : ""}
               {publishResult.message ? ` | ${publishResult.message}` : ""}
+            </div>
+          ) : null}
+          {testPublishResult?.exercise ? (
+            <div className={testPublishResult.exercise.ok ? "status success" : "status warning"}>
+              Test upload: {testPublishResult.exercise.ok ? "ok" : "failed"}
+              {testPublishResult.exercise.exerciseId ? ` | exerciseId=${testPublishResult.exercise.exerciseId}` : ""}
+              {Number.isFinite(testPublishResult.exercise.questionCount) ? ` | questions=${testPublishResult.exercise.questionCount}` : ""}
+              {testPublishResult.lpLinked
+                ? (testPublishResult.lpLinked.ok
+                    ? ` | LP linked${testPublishResult.lpId ? ` (lpId=${testPublishResult.lpId})` : ""}`
+                    : ` | LP link failed: ${testPublishResult.lpLinked.error || "unknown reason"}`)
+                : ""}
             </div>
           ) : null}
         </article>
@@ -731,6 +789,9 @@ function saveCourse() {
             </button>
             <button className="button" type="button" onClick={publishToChamilo} disabled={isPending || !chamilo.baseUrl || !chamilo.courseCode}>
               Экспортировать и отправить в Chamilo
+            </button>
+            <button className="ghost-button" type="button" onClick={publishTestToChamilo} disabled={isPending || !canPublishTest}>
+              Upload test only
             </button>
           </div>
           <div className="status">

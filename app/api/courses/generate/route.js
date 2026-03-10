@@ -1,5 +1,5 @@
-﻿import { NextResponse } from "next/server";
-import { saveCourse } from "@/lib/course-store";
+import { NextResponse } from "next/server";
+import { getCourse, saveCourse } from "@/lib/course-store";
 import { generateCourseDraft } from "@/lib/course-generator";
 
 function clampProgress(value) {
@@ -14,7 +14,7 @@ function toErrorMessage(error) {
   return error instanceof Error ? error.message : "Course generation failed.";
 }
 
-function createProgressStream(payload) {
+function createProgressStream(effectivePayload) {
   const encoder = new TextEncoder();
 
   return new ReadableStream({
@@ -23,19 +23,22 @@ function createProgressStream(payload) {
         controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
       };
 
-      const report = (percent, stage, message) => {
+      const report = (percent, stage, message, metrics = null) => {
         send({
           type: "progress",
           percent: clampProgress(percent),
           stage: `${stage || ""}`,
-          message: `${message || ""}`
+          message: `${message || ""}`,
+          metrics: metrics && typeof metrics === "object" ? metrics : undefined
         });
       };
+
+      let latestSnapshot = null;
 
       try {
         report(3, "request", "Preparing request");
 
-        const course = await generateCourseDraft(payload, {
+        const course = await generateCourseDraft(effectivePayload, {
           onProgress: report,
           onModuleReady: async (event) => {
             const moduleIndex = Number(event?.moduleIndex || 0);
@@ -49,7 +52,7 @@ function createProgressStream(payload) {
             };
 
             if (snapshot?.id) {
-              await saveCourse(snapshot);
+              latestSnapshot = await saveCourse(snapshot);
             }
 
             send({
@@ -67,27 +70,54 @@ function createProgressStream(payload) {
         const savedCourse = await saveCourse({
           ...course,
           generationStatus: "completed",
-          completedModules: Array.isArray(course?.modules) ? course.modules.length : 0
+          completedModules: Array.isArray(course?.modules) ? course.modules.length : 0,
+          lastError: ""
         });
 
         report(100, "done", "Completed");
         send({ type: "done", course: savedCourse });
       } catch (error) {
-        send({ type: "error", message: toErrorMessage(error) });
+        const message = toErrorMessage(error);
+        if (latestSnapshot?.id) {
+          try {
+            latestSnapshot = await saveCourse({
+              ...latestSnapshot,
+              generationStatus: "failed",
+              lastError: message
+            });
+          } catch {
+            // ignore snapshot save errors
+          }
+        }
+        send({
+          type: "error",
+          message,
+          courseId: latestSnapshot?.id || ""
+        });
       } finally {
         controller.close();
       }
     }
   });
 }
-
 export async function POST(request) {
   const payload = await request.json().catch(() => ({}));
   const streamMode = request.nextUrl.searchParams.get("stream") === "1";
+  const resumeCourseId = `${payload?.resumeCourseId || ""}`.trim();
+  let effectivePayload = payload;
+  if (resumeCourseId) {
+    const resumeCourse = await getCourse(resumeCourseId);
+    if (resumeCourse) {
+      effectivePayload = {
+        ...payload,
+        _resumeCourse: resumeCourse
+      };
+    }
+  }
 
   if (!streamMode) {
     try {
-      const course = await generateCourseDraft(payload);
+      const course = await generateCourseDraft(effectivePayload);
       const savedCourse = await saveCourse({
         ...course,
         generationStatus: "completed",
@@ -105,7 +135,7 @@ export async function POST(request) {
     }
   }
 
-  return new Response(createProgressStream(payload), {
+  return new Response(createProgressStream(effectivePayload), {
     headers: {
       "Content-Type": "application/x-ndjson; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
