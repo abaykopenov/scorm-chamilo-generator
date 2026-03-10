@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { isSupportedTextMaterial } from "@/lib/document-parser";
 import { saveUploadedMaterial } from "@/lib/material-store";
+import { checkApiAuth, checkRateLimit } from "@/lib/security";
 
 const MAX_FILE_SIZE_MB = 50;
 const MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 export async function POST(request) {
+  const authError = checkApiAuth(request);
+  if (authError) return authError;
+  const rateLimitError = checkRateLimit(request);
+  if (rateLimitError) return rateLimitError;
+
   try {
     const formData = await request.formData();
     const file = formData.get("file");

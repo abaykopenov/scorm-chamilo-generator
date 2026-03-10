@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getMaterial, getMaterialChunks } from "@/lib/material-store";
+import { guardResourceId, checkApiAuth, checkRateLimit } from "@/lib/security";
 
 function toBoundedInt(value, fallback, min, max) {
   const parsed = Math.trunc(Number(value));
@@ -10,7 +11,15 @@ function toBoundedInt(value, fallback, min, max) {
 }
 
 export async function GET(request, { params }) {
-  const { materialId } = await params;
+  const authError = checkApiAuth(request);
+  if (authError) return authError;
+  const rateLimitError = checkRateLimit(request);
+  if (rateLimitError) return rateLimitError;
+
+  const { materialId: rawId } = await params;
+  const materialId = guardResourceId(rawId, "Material");
+  if (materialId instanceof NextResponse) return materialId;
+
   const material = await getMaterial(materialId);
 
   if (!material) {

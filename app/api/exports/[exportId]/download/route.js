@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getExportZip } from "@/lib/course-store";
+import { guardResourceId } from "@/lib/security";
 
 function toSafeAsciiFileName(fileName, fallback) {
   const normalized = String(fileName || fallback)
@@ -16,7 +17,10 @@ function encodeFileNameUtf8(fileName) {
 }
 
 export async function GET(_request, { params }) {
-  const { exportId } = await params;
+  const { exportId: rawId } = await params;
+  const exportId = guardResourceId(rawId, "Export");
+  if (exportId instanceof NextResponse) return exportId;
+
   const exportResult = await getExportZip(exportId);
   if (!exportResult) {
     return NextResponse.json({ error: "Export not found" }, { status: 404 });

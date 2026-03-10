@@ -2,9 +2,18 @@ import { NextResponse } from "next/server";
 import { connectToChamilo, normalizeChamiloProfile } from "@/lib/chamilo-client";
 import { getCourse, saveCourse } from "@/lib/course-store";
 import { normalizeCoursePayload } from "@/lib/validation";
+import { guardResourceId, checkApiAuth, checkRateLimit } from "@/lib/security";
 
 export async function POST(request, { params }) {
-  const { courseId } = await params;
+  const authError = checkApiAuth(request);
+  if (authError) return authError;
+  const rateLimitError = checkRateLimit(request);
+  if (rateLimitError) return rateLimitError;
+
+  const { courseId: rawId } = await params;
+  const courseId = guardResourceId(rawId, "Course");
+  if (courseId instanceof NextResponse) return courseId;
+
   const course = await getCourse(courseId);
   if (!course) {
     return NextResponse.json({ error: "Course not found" }, { status: 404 });
