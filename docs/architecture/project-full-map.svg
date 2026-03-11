@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1400" viewBox="0 0 2200 1400">
+  <defs>
+    <style>
+      .title { font: 700 30px Arial, sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 14px Arial, sans-serif; fill: #334155; }
+      .group-title { font: 700 20px Arial, sans-serif; fill: #0f172a; }
+      .item { font: 500 14px Arial, sans-serif; fill: #0f172a; }
+      .small { font: 500 12px Arial, sans-serif; fill: #475569; }
+      .group {
+        stroke: #94a3b8;
+        stroke-width: 2;
+        rx: 16;
+        ry: 16;
+      }
+      .arrow {
+        stroke: #334155;
+        stroke-width: 2.5;
+        fill: none;
+        marker-end: url(#arrowhead);
+      }
+    </style>
+    <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="3.5" orient="auto">
+      <polygon points="0 0, 7 3.5, 0 7" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="2200" height="1400" fill="#f8fafc"/>
+  <text x="40" y="52" class="title">SCORM Chamilo Generator - Full Architecture Map</text>
+  <text x="40" y="78" class="subtitle">Web + API + LLM/RAG + SCORM + Chamilo + Telegram Bot runtime</text>
+
+  <!-- Clients -->
+  <rect x="40" y="110" width="320" height="170" class="group" fill="#e0f2fe"/>
+  <text x="58" y="142" class="group-title">Clients</text>
+  <text x="58" y="170" class="item">- Web user (browser)</text>
+  <text x="58" y="195" class="item">- Telegram user</text>
+  <text x="58" y="220" class="small">Starts generation, uploads files,</text>
+  <text x="58" y="240" class="small">downloads SCORM ZIP.</text>
+
+  <!-- Next.js UI -->
+  <rect x="400" y="110" width="460" height="290" class="group" fill="#dcfce7"/>
+  <text x="420" y="142" class="group-title">Next.js UI (app + components)</text>
+  <text x="420" y="170" class="item">- app/page.js (CourseCreator)</text>
+  <text x="420" y="195" class="item">- app/courses/[courseId]/page.js</text>
+  <text x="420" y="220" class="item">- components/course-creator.js</text>
+  <text x="420" y="245" class="item">- components/course-editor.js</text>
+  <text x="420" y="270" class="item">- stream progress rendering</text>
+  <text x="420" y="305" class="small">Calls App Router API and renders</text>
+  <text x="420" y="325" class="small">course history, editor, publish actions.</text>
+
+  <!-- API -->
+  <rect x="900" y="110" width="560" height="470" class="group" fill="#fef3c7"/>
+  <text x="920" y="142" class="group-title">App Router API (app/api/*)</text>
+  <text x="920" y="170" class="item">Courses:</text>
+  <text x="940" y="193" class="item">- /api/courses</text>
+  <text x="940" y="216" class="item">- /api/courses/generate?stream=1</text>
+  <text x="940" y="239" class="item">- /api/courses/[id]/* (export, publish, regenerate)</text>
+  <text x="920" y="270" class="item">Materials:</text>
+  <text x="940" y="293" class="item">- /api/materials/upload, /index, /[id]/chunks, delete</text>
+  <text x="920" y="324" class="item">Diagnostics:</text>
+  <text x="940" y="347" class="item">- /api/local-llm/check</text>
+  <text x="940" y="370" class="item">- /api/diagnostics/ollama, /qdrant</text>
+  <text x="920" y="401" class="item">Downloads:</text>
+  <text x="940" y="424" class="item">- /api/exports/[exportId]/download</text>
+  <text x="920" y="456" class="item">Security middleware helpers:</text>
+  <text x="940" y="479" class="item">- checkApiAuth, checkRateLimit, guardResourceId</text>
+
+  <!-- Telegram Bot -->
+  <rect x="1510" y="110" width="650" height="360" class="group" fill="#ede9fe"/>
+  <text x="1530" y="142" class="group-title">Telegram Bot Runtime (tools/*)</text>
+  <text x="1530" y="170" class="item">- run-with-bot.mjs (starts web + bot)</text>
+  <text x="1530" y="195" class="item">- load-env.mjs (.env/.env.local)</text>
+  <text x="1530" y="220" class="item">- telegram-bot.mjs (long polling)</text>
+  <text x="1530" y="250" class="item">Commands:</text>
+  <text x="1550" y="273" class="item">/create, /status, /materials, /clear_materials</text>
+  <text x="1550" y="296" class="item">/models, /model &lt;name&gt;, /model default</text>
+  <text x="1530" y="326" class="item">Document upload flow:</text>
+  <text x="1550" y="349" class="item">Telegram file -&gt; save material -&gt; index -&gt; chat session</text>
+  <text x="1530" y="380" class="small">Per-chat: selected generation model + material IDs.</text>
+
+  <!-- Core -->
+  <rect x="400" y="430" width="1100" height="850" class="group" fill="#fee2e2"/>
+  <text x="420" y="462" class="group-title">Core Services (lib/*)</text>
+
+  <rect x="430" y="490" width="510" height="260" class="group" fill="#fff7ed"/>
+  <text x="450" y="520" class="item">Course generation pipeline</text>
+  <text x="450" y="546" class="item">- validation.normalizeGenerateInput</text>
+  <text x="450" y="570" class="item">- course-generator (V4)</text>
+  <text x="470" y="594" class="small">planner -&gt; rag-context -&gt; LLM outline/batches</text>
+  <text x="470" y="614" class="small">-&gt; line-plan fallback -&gt; extractive fallback</text>
+  <text x="470" y="634" class="small">-&gt; quality gate -&gt; final test build</text>
+  <text x="450" y="662" class="item">- generation-planner</text>
+  <text x="450" y="686" class="item">- rag-service</text>
+  <text x="450" y="710" class="item">- course-postprocess</text>
+  <text x="450" y="734" class="item">- regeneration + structure-engine</text>
+
+  <rect x="960" y="490" width="510" height="260" class="group" fill="#ecfeff"/>
+  <text x="980" y="520" class="item">LLM + Embeddings</text>
+  <text x="980" y="546" class="item">- local-llm facade</text>
+  <text x="980" y="570" class="item">- llm/providers.js (Ollama/OpenAI-compatible)</text>
+  <text x="980" y="594" class="item">- llm/parser.js + llm/utils.js</text>
+  <text x="980" y="618" class="item">- embeddings.js</text>
+  <text x="980" y="642" class="item">- vector-search.js (local vectors)</text>
+  <text x="980" y="666" class="item">- langchain-qdrant.js (optional remote vectors)</text>
+
+  <rect x="430" y="780" width="510" height="220" class="group" fill="#f0fdf4"/>
+  <text x="450" y="810" class="item">Materials indexing</text>
+  <text x="450" y="836" class="item">- material-indexer</text>
+  <text x="450" y="860" class="item">- document-parser (pdf/docx/txt/html...)</text>
+  <text x="450" y="884" class="item">- chunker (clean + split text)</text>
+  <text x="450" y="908" class="item">- save chunks/vectors + optional Qdrant upsert</text>
+  <text x="450" y="936" class="small">Used by web API and Telegram bot uploads.</text>
+
+  <rect x="960" y="780" width="510" height="220" class="group" fill="#eef2ff"/>
+  <text x="980" y="810" class="item">SCORM + Chamilo</text>
+  <text x="980" y="836" class="item">- scorm/exporter -&gt; package-builder</text>
+  <text x="980" y="860" class="item">- manifest.js + runtime.js + zip.js</text>
+  <text x="980" y="884" class="item">- chamilo-client (login/upload/import/test/LP)</text>
+  <text x="980" y="908" class="item">- publish endpoints call these services</text>
+
+  <rect x="430" y="1030" width="1040" height="220" class="group" fill="#faf5ff"/>
+  <text x="450" y="1060" class="item">Stores</text>
+  <text x="450" y="1086" class="item">- course-store (courses + exports metadata)</text>
+  <text x="450" y="1110" class="item">- material-store (files/documents/chunks/vectors metadata)</text>
+  <text x="450" y="1134" class="item">- IDs via ids.js</text>
+  <text x="450" y="1160" class="small">All persistent data is file-based under .data/</text>
+
+  <!-- Data -->
+  <rect x="40" y="310" width="320" height="970" class="group" fill="#cffafe"/>
+  <text x="58" y="342" class="group-title">Local Data (.data/*)</text>
+  <text x="58" y="372" class="item">- courses/*.json</text>
+  <text x="58" y="396" class="item">- exports/*.zip</text>
+  <text x="58" y="420" class="item">- exports/*.json</text>
+  <text x="58" y="454" class="item">materials/</text>
+  <text x="78" y="478" class="item">- files/*</text>
+  <text x="78" y="502" class="item">- documents/*.json</text>
+  <text x="78" y="526" class="item">- chunks/*.json</text>
+  <text x="78" y="550" class="item">- vectors/*.json</text>
+  <text x="58" y="584" class="item">telegram-bot/state.json</text>
+  <text x="58" y="620" class="small">Used as persistent source of truth</text>
+  <text x="58" y="640" class="small">for UI history, exports, RAG, bot sessions.</text>
+
+  <!-- External -->
+  <rect x="1510" y="500" width="650" height="780" class="group" fill="#ffedd5"/>
+  <text x="1530" y="532" class="group-title">External Systems</text>
+  <text x="1530" y="562" class="item">- Ollama (text gen + embeddings)</text>
+  <text x="1530" y="586" class="item">- OpenAI-compatible endpoint (optional)</text>
+  <text x="1530" y="610" class="item">- Qdrant vector DB (optional)</text>
+  <text x="1530" y="634" class="item">- Chamilo LMS</text>
+  <text x="1530" y="658" class="item">- Telegram Bot API</text>
+  <text x="1530" y="692" class="small">If external services are unavailable,</text>
+  <text x="1530" y="712" class="small">project falls back to local vectors and/or</text>
+  <text x="1530" y="732" class="small">template/extractive generation flows.</text>
+
+  <!-- Arrows -->
+  <path class="arrow" d="M360 180 L400 180"/>
+  <path class="arrow" d="M360 220 L1510 220"/>
+  <path class="arrow" d="M860 250 L900 250"/>
+  <path class="arrow" d="M1180 580 L1180 490"/>
+  <path class="arrow" d="M900 380 L650 490"/>
+  <path class="arrow" d="M1240 580 L1510 580"/>
+  <path class="arrow" d="M650 750 L260 750"/>
+  <path class="arrow" d="M1180 1000 L260 1000"/>
+  <path class="arrow" d="M1510 260 L1260 640"/>
+  <path class="arrow" d="M1510 300 L260 620"/>
+  <path class="arrow" d="M1830 470 L1830 500"/>
+
+  <!-- Legend -->
+  <rect x="1510" y="1210" width="650" height="70" class="group" fill="#ffffff"/>
+  <text x="1530" y="1240" class="small">Solid arrows show main runtime flow. This diagram includes web UI, API routes, core libs, local storage,</text>
+  <text x="1530" y="1260" class="small">Telegram bot pipeline, and external integrations used by this repository.</text>
+</svg>

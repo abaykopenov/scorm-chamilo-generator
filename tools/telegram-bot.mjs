@@ -8,6 +8,10 @@ import { saveUploadedMaterial } from "../lib/material-store.js";
 import { saveCourse } from "../lib/course-store.js";
 import { exportCourseToScormArchive } from "../lib/scorm/exporter.js";
 import { loadLocalEnvFiles } from "./load-env.mjs";
+import prisma from "../lib/db.js";
+import { sendAuthCode } from "../lib/mailer.js";
+
+const ALLOWED_EMAIL_DOMAIN = process.env.ALLOWED_EMAIL_DOMAIN || "@university.edu";
 
 loadLocalEnvFiles();
 
@@ -306,16 +310,18 @@ function parseCommand(rawText) {
   };
 }
 
-function parseCreateArgs(rawArgs) {
+function parseCreateArgs(rawArgs, cmd = "/create") {
   const args = `${rawArgs || ""}`.trim();
   if (!args) {
     return {
       ok: false,
-      message: [
-        "Формат команды:",
-        "/create <тема>",
-        "/create <тема> | <аудитория> | <цель 1, цель 2, цель 3>"
-      ].join("\n")
+      message: cmd === "/quiz" 
+        ? "Формат команды:\n/quiz <тема>"
+        : [
+            "Формат команды:",
+            "/create <тема>",
+            "/create <тема> | <аудитория> | <цель 1, цель 2>"
+          ].join("\n")
     };
   }
 
@@ -324,7 +330,7 @@ function parseCreateArgs(rawArgs) {
   if (!title) {
     return {
       ok: false,
-      message: "Не удалось прочитать тему курса. Укажите тему после команды /create."
+      message: `Не удалось прочитать тему. Укажите тему после команды ${cmd}.`
     };
   }
 
@@ -337,6 +343,7 @@ function parseCreateArgs(rawArgs) {
 
   return {
     ok: true,
+    topic: title,
     title,
     audience,
     goals
@@ -430,11 +437,41 @@ async function telegramCall(method, payload, options = {}) {
   return data.result;
 }
 
-async function sendMessage(chatId, text) {
-  return telegramCall("sendMessage", {
-    chat_id: chatId,
-    text: `${text || ""}`.slice(0, 4096)
-  });
+async function sendMessage(chatId, text, options = {}) {
+  try {
+    const result = await telegramCall("sendMessage", {
+      chat_id: chatId,
+      text: `${text || ""}`.slice(0, 4096),
+      parse_mode: "Markdown",
+      ...options
+    });
+    return result;
+  } catch (err) {
+    if (err.message && err.message.includes("bot was blocked by the user")) {
+      console.warn(`[telegram-bot] Attempted to message ${chatId}, but bot was blocked.`);
+      return null;
+    }
+    throw err;
+  }
+}
+
+async function editMessageText(chatId, messageId, text, options = {}) {
+  try {
+    const result = await telegramCall("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text: `${text || ""}`.slice(0, 4096),
+      parse_mode: "Markdown",
+      ...options
+    });
+    return result;
+  } catch (err) {
+    if (err.message && err.message.includes("message is not modified")) {
+      return null;
+    }
+    console.warn(`[telegram-bot] Failed to edit message ${messageId}: ${err.message}`);
+    return null;
+  }
 }
 
 async function sendDocument(chatId, zipBuffer, fileName, caption) {
@@ -529,25 +566,28 @@ async function fetchOllamaModelNames(baseUrl) {
 
 function buildHelpText() {
   return [
-    "Я создаю SCORM 1.2 ZIP и отправляю файл в этот чат.",
+    "🎓 *Добро пожаловать в SCORM Generator Bot!*",
+    "Я помогу вам создать интерактивные курсы и тесты (SCORM 1.2) из ваших документов.",
     "",
-    "Команды:",
-    "/start - приветствие",
-    "/help - показать команды",
-    "/status - текущая конфигурация и количество файлов",
-    "/create <тема>",
-    "/create <тема> | <аудитория> | <цель 1, цель 2, цель 3>",
-    "/models - показать модели Ollama",
-    "/model - показать текущую модель",
-    "/model <имя> - выбрать модель Ollama для этого чата",
-    "/model default - сбросить модель к значению из env/default",
-    "/materials - список файлов, подключенных к этому чату",
-    "/clear_materials - очистить файлы этого чата",
+    "🚀 *Генерация (Создание контента):*",
+    "• /create `тема` — сгенерировать полноценный обучающий курс",
+    "• /create `тема` | `аудитория` | `цель` — более точная генерация",
+    "• /quiz `тема` — сгенерировать только тестирование (Quiz) по теме",
     "",
-    "Загрузка файлов:",
-    "- просто отправьте документ в чат",
-    "- бот сохранит и проиндексирует его",
-    "- после этого /create использует эти материалы (RAG)"
+    "📚 *Как использовать свои файлы (RAG):*",
+    "1️⃣ Просто отправьте мне любой документ *(PDF, DOCX, TXT и др.)*",
+    "2️⃣ Я его проиндексирую и сохраню в память",
+    "3️⃣ После загрузки вы сможете нажать кнопку *«Сгенерировать курс / тест»* — весь контент будет основан на вашем тексте!",
+    "",
+    "📁 *Управление файлами:*",
+    "• /materials — посмотреть загруженные документы",
+    "• /clear\\_materials — очистить список файлов",
+    "",
+    "⚙️ *Настройки системы:*",
+    "• /status — посмотреть текущие лимиты и статус бота",
+    "• /models — список доступных AI\\-моделей",
+    "• /model `имя_модели` — выбрать конкретную модель",
+    "• /help — показать это меню"
   ].join("\n");
 }
 
@@ -699,39 +739,85 @@ async function handleModelCommand(chatId, args) {
   }
 }
 
-async function handleCreateCommand(chatId, parsed) {
-  const chatKey = `${chatId}`;
-  if (activeChats.has(chatKey)) {
-    await sendMessage(chatId, "Для этого чата уже идёт генерация. Дождитесь завершения текущей задачи.");
-    return;
+const generationQueue = [];
+let isQueueRunning = false;
+
+async function processGenerationQueue() {
+  if (isQueueRunning) return;
+  isQueueRunning = true;
+
+  while (generationQueue.length > 0) {
+    const task = generationQueue.shift();
+    await executeGeneration(task.chatId, task.parsed, task.isQuiz);
+    
+    // Notify next users about their position
+    for (const [i, waitTask] of generationQueue.entries()) {
+      void editMessageText(waitTask.chatId, waitTask.statusMsgId, `⏳ Вы в очереди. Ваше место: ${i + 1}`).catch(()=>{});
+    }
   }
 
+  isQueueRunning = false;
+}
+
+async function handleCreateCommand(chatId, parsed, isQuiz = false) {
+  const statusMsg = await sendMessage(chatId, `⏳ Добавлен в очередь. Вы ${generationQueue.length + 1}-й...`);
+  const statusMsgId = statusMsg?.message_id;
+
+  generationQueue.push({ chatId, parsed, isQuiz, statusMsgId });
+  void processQueueWrapper();
+}
+
+async function processQueueWrapper() {
+  try {
+    await processGenerationQueue();
+  } catch (e) {
+    console.error(`[telegram-bot] queue processing error:`, e);
+    isQueueRunning = false;
+  }
+}
+
+async function executeGeneration(chatId, parsed, isQuiz) {
+  const chatKey = `${chatId}`;
   activeChats.add(chatKey);
   let lastProgress = -PROGRESS_STEP_PERCENT;
 
+  let progressMsgId = null;
+
   try {
     const input = await buildGenerateInputForChat(chatId, parsed);
+    if (isQuiz) {
+      input.isQuizOnly = true;
+      input.finalTest = {
+        ...input.finalTest,
+        enabled: true,
+        questionCount: 15 // make it a solid test
+      };
+    }
+    
     const materialCount = Array.isArray(input?.rag?.documentIds) ? input.rag.documentIds.length : 0;
-    await sendMessage(
-      chatId,
-      `Запускаю генерацию курса: "${parsed.title}"${materialCount > 0 ? ` | материалов: ${materialCount}` : ""}`
-    );
+    const initialText = `🧠 Запускаю генерацию ${isQuiz ? "теста" : "курса"}: "${parsed.title}"${materialCount > 0 ? ` | материалов: ${materialCount}` : ""}\n[0%] Подготовка...`;
+    
+    const progressMsg = await sendMessage(chatId, initialText);
+    progressMsgId = progressMsg?.message_id;
 
     const course = await generateCourseDraft(input, {
       onProgress: (percent, stage, message) => {
         const value = clampInt(percent, 0, 0, 100);
-        if (value < lastProgress + PROGRESS_STEP_PERCENT && value !== 100) {
-          return;
+        if (value < lastProgress + Math.max(10, PROGRESS_STEP_PERCENT) && value !== 100) {
+          return; // debounce quick edits to prevent Telegram rate limit
         }
         lastProgress = value;
         const stageText = `${stage || ""}`.trim();
         const messageText = `${message || ""}`.trim();
         const statusText = [
-          `Прогресс: ${value}%`,
-          stageText ? `stage: ${stageText}` : "",
-          messageText ? `msg: ${messageText}` : ""
-        ].filter(Boolean).join(" | ");
-        void sendMessage(chatId, statusText).catch(() => {});
+          `⏳ Прогресс: ${value}%`,
+          stageText ? `Текущий этап: ${stageText}` : "",
+          messageText ? `❯ ${messageText}` : ""
+        ].filter(Boolean).join("\n");
+        
+        if (progressMsgId) {
+          void editMessageText(chatId, progressMsgId, statusText).catch(() => {});
+        }
       }
     });
 
@@ -741,6 +827,10 @@ async function handleCreateCommand(chatId, parsed) {
       completedModules: Array.isArray(course?.modules) ? course.modules.length : 0,
       lastError: ""
     });
+
+    if (progressMsgId) {
+       void editMessageText(chatId, progressMsgId, `🚀 Упаковываю SCORM-архив...`).catch(()=>{});
+    }
 
     const archive = await exportCourseToScormArchive(savedCourse);
     await sendDocument(
@@ -754,9 +844,15 @@ async function handleCreateCommand(chatId, parsed) {
       ].join("\n")
     );
 
-    await sendMessage(chatId, `Готово. ZIP отправлен в чат. Course ID: ${savedCourse.id}`);
+    if (progressMsgId) {
+       void editMessageText(chatId, progressMsgId, `✅ SCORM сгенерирован успешно!`).catch(()=>{});
+    }
   } catch (error) {
-    await sendMessage(chatId, `Ошибка генерации: ${errorMessage(error, "unknown error")}`);
+    if (progressMsgId) {
+       void editMessageText(chatId, progressMsgId, `❌ Ошибка генерации: ${errorMessage(error, "unknown error")}`).catch(()=>{});
+    } else {
+       await sendMessage(chatId, `Ошибка генерации: ${errorMessage(error, "unknown error")}`);
+    }
   } finally {
     activeChats.delete(chatKey);
   }
@@ -846,8 +942,17 @@ async function handleDocumentUpload(chatId, message) {
         `Готово: "${material.fileName}" проиндексирован.`,
         `Chunks: ${result.chunksCount ?? 0}`,
         `Материалов в чате: ${materialCount}`,
-        "Теперь можно запускать /create ..."
-      ].join("\n")
+        "Что вы хотите сделать дальше?"
+      ].join("\n"),
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📝 Сгенерировать Курс", callback_data: `create_course^${material.fileName.slice(0, 30)}` }],
+            [{ text: "🧠 Сгенерировать Тест (Quiz)", callback_data: `create_quiz^${material.fileName.slice(0, 30)}` }],
+            [{ text: "🗑 Очистить материалы чата", callback_data: `clear_materials` }]
+          ]
+        }
+      }
     );
     return true;
   } catch (error) {
@@ -863,16 +968,82 @@ async function handleMessage(message) {
   }
 
   if (!isAllowedChat(chatId)) {
-    await sendMessage(chatId, "Доступ к боту ограничен для этого chat_id.");
+    await sendMessage(chatId, "Доступ к боту ограничен для текущей инсталляции.");
     return;
   }
 
-  if (message?.document) {
-    await handleDocumentUpload(chatId, message);
+  let dbUser = await prisma.telegramUser.findUnique({ where: { id: String(chatId) } });
+  if (!dbUser) {
+    dbUser = await prisma.telegramUser.create({ data: { id: String(chatId), status: "guest" } });
+  }
+
+  if (dbUser.status === "banned") {
+    await sendMessage(chatId, "❌ Ваш аккаунт заблокирован администратором.");
     return;
   }
 
   const text = `${message?.text || ""}`.trim();
+
+  // ----- AUTHENTICATION FLOW -----
+  if (dbUser.status !== "approved") {
+    if (text === "/start") {
+      await sendMessage(chatId, `🎓 Добро пожаловать! Этот бот предназначен исключительно для сотрудников и студентов университета.\n\nПожалуйста, отправьте вашу корпоративную почту (она должна заканчиваться на ${ALLOWED_EMAIL_DOMAIN}), чтобы получить код доступа.`);
+      return;
+    }
+
+    if (dbUser.status === "guest") {
+      if (!text.endsWith(ALLOWED_EMAIL_DOMAIN) || !text.includes("@")) {
+        await sendMessage(chatId, `⚠️ Неверный формат. Почта должна оканчиваться на ${ALLOWED_EMAIL_DOMAIN}. Попробуйте снова:`);
+        return;
+      }
+      
+      const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
+      const expiresAt = new Date(Date.now() + 10 * 60000); // 10 minutes
+
+      await prisma.telegramUser.update({
+        where: { id: dbUser.id },
+        data: { email: text, status: "pending_code", authCode: code, authCodeExpiresAt: expiresAt, failedAttempts: 0 }
+      });
+
+      const sent = await sendAuthCode(text, code);
+      if (sent) {
+        await sendMessage(chatId, `✅ Мы отправили 6-значный код на почту ${text}.\nПожалуйста, введите его здесь (код действителен 10 минут):`);
+      } else {
+        await sendMessage(chatId, `❌ Ошибка отправки письма на ${text}. Пожалуйста, свяжитесь с поддержкой.`);
+      }
+      return;
+    }
+
+    if (dbUser.status === "pending_code") {
+      if (text.length === 6 && /^\d+$/.test(text)) {
+        if (dbUser.authCode === text && dbUser.authCodeExpiresAt && new Date() < dbUser.authCodeExpiresAt) {
+          await prisma.telegramUser.update({ where: { id: dbUser.id }, data: { status: "approved", authCode: null, authCodeExpiresAt: null, failedAttempts: 0 } });
+          await sendMessage(chatId, "🎉 Почта успешно подтверждена! Теперь вы можете генерировать курсы и отправлять документы. Используйте команду /help.");
+        } else {
+          const attempts = dbUser.failedAttempts + 1;
+          if (attempts >= 3) {
+             await prisma.telegramUser.update({ where: { id: dbUser.id }, data: { status: "guest", authCode: null, failedAttempts: 0 } });
+             await sendMessage(chatId, "❌ Превышено количество попыток или код устарел. Отправьте вашу почту заново.");
+          } else {
+             await prisma.telegramUser.update({ where: { id: dbUser.id }, data: { failedAttempts: attempts } });
+             await sendMessage(chatId, `⚠️ Неверный код. Осталось попыток: ${3 - attempts}`);
+          }
+        }
+      } else {
+         await sendMessage(chatId, "Укажите 6-значный код из письма.");
+      }
+      return;
+    }
+    return;
+  }
+  // ----- END AUTHENTICATION FLOW -----
+
+  if (message?.document) {
+    await handleDocumentUpload(chatId, message);
+    await prisma.telegramUser.update({ where: { id: dbUser.id }, data: { documentsCount: { increment: 1 } } });
+    return;
+  }
+
   if (!text) {
     return;
   }
@@ -916,13 +1087,47 @@ async function handleMessage(message) {
     return;
   }
 
-  if (command === "/create") {
-    const parsed = parseCreateArgs(args);
+  if (command === "/quiz") {
+    const parsed = parseCreateArgs(args, "/quiz");
     if (!parsed.ok) {
       await sendMessage(chatId, parsed.message);
       return;
     }
-    await handleCreateCommand(chatId, parsed);
+
+    const log = await prisma.generationLog.create({
+      data: { chatId: String(chatId), title: parsed.topic + " (Quiz)", status: "started" }
+    });
+
+    try {
+      await handleCreateCommand(chatId, parsed, true);
+      await prisma.generationLog.update({ where: { id: log.id }, data: { status: "completed" } });
+      await prisma.telegramUser.update({ where: { id: String(chatId) }, data: { generationsCount: { increment: 1 } } });
+    } catch (e) {
+      await prisma.generationLog.update({ where: { id: log.id }, data: { status: "failed" } });
+      throw e; 
+    }
+    return;
+  }
+
+  if (command === "/create") {
+    const parsed = parseCreateArgs(args, "/create");
+    if (!parsed.ok) {
+      await sendMessage(chatId, parsed.message);
+      return;
+    }
+
+    const log = await prisma.generationLog.create({
+      data: { chatId: String(chatId), title: parsed.topic, status: "started" }
+    });
+
+    try {
+      await handleCreateCommand(chatId, parsed, false);
+      await prisma.generationLog.update({ where: { id: log.id }, data: { status: "completed" } });
+      await prisma.telegramUser.update({ where: { id: String(chatId) }, data: { generationsCount: { increment: 1 } } });
+    } catch (e) {
+      await prisma.generationLog.update({ where: { id: log.id }, data: { status: "failed" } });
+      throw e; 
+    }
     return;
   }
 
@@ -942,13 +1147,46 @@ async function handleMessage(message) {
   await sendMessage(chatId, "Неизвестная команда. Используйте /help.");
 }
 
+async function handleCallbackQuery(query) {
+  const chatId = query.message?.chat?.id;
+  const messageId = query.message?.message_id;
+  const data = query.data || "";
+
+  await telegramCall("answerCallbackQuery", { callback_query_id: query.id }).catch(() => {});
+
+  if (!chatId) return;
+
+  if (data.startsWith("create_course^")) {
+    const topic = data.split("^")[1] || "Без темы";
+    await editMessageText(chatId, messageId, `✅ Вы выбрали: Сгенерировать Курс по "${topic}"\n\nЗапускаем добавление в очередь...`);
+    // Mock user message logic to trigger handleCreateCommand directly
+    await handleMessage({
+      chat: { id: chatId },
+      text: `/create ${topic}`
+    });
+  } else if (data.startsWith("create_quiz^")) {
+    const topic = data.split("^")[1] || "Без темы";
+    await editMessageText(chatId, messageId, `✅ Вы выбрали: Сгенерировать Тест по "${topic}"\n\nЗапускаем добавление в очередь...`);
+    await handleMessage({
+      chat: { id: chatId },
+      text: `/quiz ${topic}`
+    });
+  } else if (data === "clear_materials") {
+    await editMessageText(chatId, messageId, `Очищаю материалы...`);
+    await handleMessage({
+      chat: { id: chatId },
+      text: `/clear_materials`
+    });
+  }
+}
+
 async function getUpdates(offset) {
   return telegramCall(
     "getUpdates",
     {
       offset,
       timeout: POLL_TIMEOUT_SECONDS,
-      allowed_updates: ["message"]
+      allowed_updates: ["message", "callback_query"]
     },
     { timeoutSeconds: POLL_TIMEOUT_SECONDS + 10 }
   );
@@ -994,7 +1232,17 @@ async function run() {
           offset = Math.max(offset, updateId + 1);
         }
         if (update?.message) {
-          await handleMessage(update.message);
+          try {
+            await handleMessage(update.message);
+          } catch (msgErr) {
+            console.error(`[telegram-bot] error processing message ${updateId}:`, msgErr);
+          }
+        } else if (update?.callback_query) {
+          try {
+            await handleCallbackQuery(update.callback_query);
+          } catch (cbErr) {
+            console.error(`[telegram-bot] error processing callback ${updateId}:`, cbErr);
+          }
         }
       }
 

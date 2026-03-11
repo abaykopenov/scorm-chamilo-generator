@@ -5,3 +5,5 @@ npm-debug.log*
 .agent
 .gemini
 .env.local
+
+/lib/generated/prisma
