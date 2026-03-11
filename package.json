@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npm run dev:clean",
+    "dev": "node tools/run-with-bot.mjs dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node tools/run-with-bot.mjs start",
+    "start:next": "next start",
+    "bot": "node tools/telegram-bot.mjs",
     "test": "node --test",
     "dev:clean": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && next dev"
   },
