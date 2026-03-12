@@ -5,13 +5,17 @@ import { generateCourseDraft } from "../lib/course-generator.js";
 import { isSupportedTextMaterial } from "../lib/document-parser.js";
 import { indexMaterialDocument, getIndexedMaterialSummary } from "../lib/material-indexer.js";
 import { saveUploadedMaterial } from "../lib/material-store.js";
-import { saveCourse } from "../lib/course-store.js";
+import { saveCourse, getCourse } from "../lib/course-store.js";
 import { exportCourseToScormArchive } from "../lib/scorm/exporter.js";
 import { loadLocalEnvFiles } from "./load-env.mjs";
 import prisma from "../lib/db.js";
 import { sendAuthCode } from "../lib/mailer.js";
 
-const ALLOWED_EMAIL_DOMAIN = process.env.ALLOWED_EMAIL_DOMAIN || "@university.edu";
+const ALLOWED_EMAIL_DOMAINS = (process.env.ALLOWED_EMAIL_DOMAIN || "@university.edu")
+  .split(",")
+  .map(d => d.trim().toLowerCase())
+  .filter(Boolean);
+
 
 loadLocalEnvFiles();
 
@@ -94,6 +98,10 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function escapeMarkdown(text) {
+  return `${text || ""}`.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function errorMessage(error, fallback) {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -151,6 +159,7 @@ function normalizeSession(value) {
   return {
     materialIds: materialIds.slice(-MAX_CHAT_MATERIALS),
     generationModel: normalizeModelName(value?.generationModel),
+    embeddingModel: normalizeModelName(value?.embeddingModel),
     files,
     updatedAt: `${value?.updatedAt || ""}`.trim() || nowIso()
   };
@@ -261,6 +270,17 @@ function setChatGenerationModel(chatId, modelName) {
   return normalized;
 }
 
+function setChatEmbeddingModel(chatId, modelName) {
+  const session = getChatSession(chatId, true);
+  if (!session) {
+    return "";
+  }
+  const normalized = normalizeModelName(modelName);
+  session.embeddingModel = normalized;
+  session.updatedAt = nowIso();
+  return normalized;
+}
+
 function clearSessionMaterials(chatId) {
   const session = getChatSession(chatId, false);
   if (!session) {
@@ -315,13 +335,13 @@ function parseCreateArgs(rawArgs, cmd = "/create") {
   if (!args) {
     return {
       ok: false,
-      message: cmd === "/quiz" 
-        ? "Формат команды:\n/quiz <тема>"
+      message: cmd === "/quiz"
+        ? "Формат команды:\n/quiz <code>тема</code>"
         : [
-            "Формат команды:",
-            "/create <тема>",
-            "/create <тема> | <аудитория> | <цель 1, цель 2>"
-          ].join("\n")
+          "Формат команды:",
+          "/create <code>тема</code>",
+          "/create <code>тема</code> | <code>аудитория</code> | <code>цель 1, цель 2</code>"
+        ].join("\n")
     };
   }
 
@@ -381,25 +401,34 @@ function resolveGenerationConfig(defaults, chatId = null) {
   return config;
 }
 
-function resolveEmbeddingConfig(defaults) {
+function resolveEmbeddingConfig(defaults, chatId = null) {
   const fallback = defaults?.rag?.embedding || {
     provider: "ollama",
     baseUrl: "http://127.0.0.1:11434",
     model: "nomic-embed-text"
   };
   const provider = EMBEDDING_PROVIDER || fallback.provider;
-  return {
+  
+  const config = {
     provider: ["ollama", "openai-compatible"].includes(provider) ? provider : "ollama",
     baseUrl: EMBEDDING_BASE_URL || fallback.baseUrl,
     model: EMBEDDING_MODEL || fallback.model
   };
+  
+  const session = chatId ? getChatSession(chatId, false) : null;
+  const sessionEmbedModel = normalizeModelName(session?.embeddingModel);
+  if (sessionEmbedModel) {
+    config.model = sessionEmbedModel;
+  }
+  
+  return config;
 }
 
 async function buildGenerateInputForChat(chatId, createArgs) {
   const defaults = createDefaultGenerateInput();
   const materialIds = await pruneUnavailableMaterials(chatId);
   const generation = resolveGenerationConfig(defaults, chatId);
-  const embedding = resolveEmbeddingConfig(defaults);
+  const embedding = resolveEmbeddingConfig(defaults, chatId);
 
   return {
     ...defaults,
@@ -442,7 +471,7 @@ async function sendMessage(chatId, text, options = {}) {
     const result = await telegramCall("sendMessage", {
       chat_id: chatId,
       text: `${text || ""}`.slice(0, 4096),
-      parse_mode: "Markdown",
+      parse_mode: "HTML",
       ...options
     });
     return result;
@@ -461,7 +490,7 @@ async function editMessageText(chatId, messageId, text, options = {}) {
       chat_id: chatId,
       message_id: messageId,
       text: `${text || ""}`.slice(0, 4096),
-      parse_mode: "Markdown",
+      parse_mode: "HTML",
       ...options
     });
     return result;
@@ -566,27 +595,29 @@ async function fetchOllamaModelNames(baseUrl) {
 
 function buildHelpText() {
   return [
-    "🎓 *Добро пожаловать в SCORM Generator Bot!*",
+    "🎓 <b>Добро пожаловать в SCORM Generator Bot!</b>",
     "Я помогу вам создать интерактивные курсы и тесты (SCORM 1.2) из ваших документов.",
     "",
-    "🚀 *Генерация (Создание контента):*",
-    "• /create `тема` — сгенерировать полноценный обучающий курс",
-    "• /create `тема` | `аудитория` | `цель` — более точная генерация",
-    "• /quiz `тема` — сгенерировать только тестирование (Quiz) по теме",
+    "🚀 <b>Генерация (Создание контента):</b>",
+    "• /create <code>тема</code> — сгенерировать полноценный обучающий курс",
+    "• /create <code>тема</code> | <code>аудитория</code> | <code>цель</code> — более точная генерация",
+    "• /quiz <code>тема</code> — сгенерировать только тестирование (Quiz) по теме",
     "",
-    "📚 *Как использовать свои файлы (RAG):*",
-    "1️⃣ Просто отправьте мне любой документ *(PDF, DOCX, TXT и др.)*",
+    "📚 <b>Как использовать свои файлы (RAG):</b>",
+    "1️⃣ Просто отправьте мне любой документ <b>(PDF, DOCX, TXT и др.)</b>",
     "2️⃣ Я его проиндексирую и сохраню в память",
-    "3️⃣ После загрузки вы сможете нажать кнопку *«Сгенерировать курс / тест»* — весь контент будет основан на вашем тексте!",
+    "3️⃣ После загрузки вы сможете нажать кнопку <b>«Сгенерировать курс / тест»</b> — весь контент будет основан на вашем тексте!",
     "",
-    "📁 *Управление файлами:*",
+    "📁 <b>Управление файлами:</b>",
     "• /materials — посмотреть загруженные документы",
-    "• /clear\\_materials — очистить список файлов",
+    "• /clear_materials — очистить список файлов",
     "",
-    "⚙️ *Настройки системы:*",
+    "⚙️ <b>Настройки системы:</b>",
     "• /status — посмотреть текущие лимиты и статус бота",
-    "• /models — список доступных AI\\-моделей",
-    "• /model `имя_модели` — выбрать конкретную модель",
+    "• /models — список доступных моделей (генерация)",
+    "• /model <code>имя_модели</code> — выбрать модель генерации",
+    "• /embed_models — список доступных моделей (эмбеддингов)",
+    "• /embed_model <code>имя_модели</code> — выбрать эмбеддинг модель",
     "• /help — показать это меню"
   ].join("\n");
 }
@@ -594,18 +625,21 @@ function buildHelpText() {
 function buildStatusText(chatId) {
   const defaults = createDefaultGenerateInput();
   const generationConfig = resolveGenerationConfig(defaults, chatId);
-  const embeddingProvider = EMBEDDING_PROVIDER || defaults.rag.embedding.provider;
+  const embeddingConfig = resolveEmbeddingConfig(defaults, chatId);
   const session = getChatSession(chatId, false);
   const materialCount = session?.materialIds?.length || 0;
   const selectedModel = normalizeModelName(session?.generationModel);
+  const selectedEmbedModel = normalizeModelName(session?.embeddingModel);
 
   return [
     "Статус Telegram-бота:",
-    `- generation.provider: ${generationConfig.provider}`,
-    `- generation.model: ${generationConfig.model}`,
-    `- chat.model.override: ${selectedModel || "none"}`,
-    `- embedding.provider: ${embeddingProvider}`,
-    `- generation.language: ${BOT_LANGUAGE}`,
+    `- generation.provider: ${escapeMarkdown(generationConfig.provider)}`,
+    `- generation.model: ${escapeMarkdown(generationConfig.model)}`,
+    `- chat.model.override: ${escapeMarkdown(selectedModel || "none")}`,
+    `- embedding.provider: ${escapeMarkdown(embeddingConfig.provider)}`,
+    `- embedding.model: ${escapeMarkdown(embeddingConfig.model)}`,
+    `- chat.embed_model.override: ${escapeMarkdown(selectedEmbedModel || "none")}`,
+    `- generation.language: ${escapeMarkdown(BOT_LANGUAGE)}`,
     `- rag.topK: ${RAG_TOP_K}`,
     `- max upload size: ${MAX_UPLOAD_SIZE_MB} MB`,
     `- активных генераций: ${activeChats.size}`,
@@ -624,7 +658,7 @@ function buildMaterialsText(chatId) {
     .reverse()
     .map((file, index) => {
       const mark = file.status === "indexed" ? "indexed" : file.status;
-      return `${index + 1}. ${file.fileName} (${formatFileSize(file.size)}) - ${mark}${file.materialId ? ` [${file.materialId}]` : ""}`;
+      return `${index + 1}. ${escapeMarkdown(file.fileName)} (${formatFileSize(file.size)}) - ${mark}${file.materialId ? ` [${file.materialId}]` : ""}`;
     });
 
   return [
@@ -652,13 +686,14 @@ async function handleListModelsCommand(chatId) {
     const preview = models
       .slice(0, 20)
       .map((name) => {
+        const escapedName = escapeMarkdown(name);
         if (name === selectedModel) {
-          return `* ${name} (chat override)`;
+          return `* ${escapedName} (chat override)`;
         }
         if (name === effectiveModel) {
-          return `* ${name} (active)`;
+          return `* ${escapedName} (active)`;
         }
-        return `- ${name}`;
+        return `- ${escapedName}`;
       });
 
     const tail = models.length > 20 ? `\n... и еще ${models.length - 20}` : "";
@@ -668,7 +703,7 @@ async function handleListModelsCommand(chatId) {
         `Модели Ollama (${baseUrl}):`,
         ...preview,
         "",
-        "Выбрать модель: /model <имя>",
+        "Выбрать модель: /model <code>имя</code>",
         "Сброс: /model default"
       ].join("\n") + tail
     );
@@ -689,11 +724,11 @@ async function handleModelCommand(chatId, args) {
     await sendMessage(
       chatId,
       [
-        `Текущая модель: ${generation.model}`,
-        `Provider: ${generation.provider}`,
-        `Override для чата: ${selectedModel || "none"}`,
+        `Текущая модель: ${escapeMarkdown(generation.model)}`,
+        `Provider: ${escapeMarkdown(generation.provider)}`,
+        `Override для чата: ${escapeMarkdown(selectedModel || "none")}`,
         "",
-        "Установить: /model <имя>",
+        "Установить: /model <code>имя</code>",
         "Сбросить: /model default",
         "Список моделей: /models"
       ].join("\n")
@@ -722,20 +757,127 @@ async function handleModelCommand(chatId, args) {
     await saveState();
 
     if (matched) {
-      await sendMessage(chatId, `Модель для чата установлена: ${matched}`);
+      await sendMessage(chatId, `Модель для чата установлена: ${escapeMarkdown(matched)}`);
       return;
     }
 
     await sendMessage(
       chatId,
       [
-        `Модель установлена как: ${selected}`,
+        `Модель установлена как: <code>${escapeMarkdown(selected)}</code>`,
         "В списке /models точного совпадения не найдено.",
         "Если модель не существует, генерация вернет ошибку."
       ].join("\n")
     );
   } catch (error) {
-    await sendMessage(chatId, `Не удалось установить модель: ${errorMessage(error, "unknown error")}`);
+    await sendMessage(chatId, `Не удалось установить модель: ${escapeMarkdown(errorMessage(error, "unknown error"))}`);
+  }
+}
+
+async function handleListEmbedModelsCommand(chatId) {
+  try {
+    const defaults = createDefaultGenerateInput();
+    const embedding = resolveEmbeddingConfig(defaults, chatId);
+    const baseUrl = embedding.baseUrl || defaults.rag.embedding.baseUrl;
+    const models = await fetchOllamaModelNames(baseUrl);
+
+    if (models.length === 0) {
+      await sendMessage(chatId, `Ollama доступен, но список моделей пуст (${baseUrl}).`);
+      return;
+    }
+
+    const session = getChatSession(chatId, false);
+    const selectedModel = normalizeModelName(session?.embeddingModel);
+    const effectiveModel = embedding.model;
+
+    const preview = models
+      .slice(0, 20)
+      .map((name) => {
+        const escapedName = escapeMarkdown(name);
+        if (name === selectedModel) {
+          return `* ${escapedName} (chat override)`;
+        }
+        if (name === effectiveModel) {
+          return `* ${escapedName} (active)`;
+        }
+        return `- ${escapedName}`;
+      });
+
+    const tail = models.length > 20 ? `\n... и еще ${models.length - 20}` : "";
+    await sendMessage(
+      chatId,
+      [
+        `Модели Ollama для эмбеддингов (${baseUrl}):`,
+        ...preview,
+        "",
+        "Выбрать модель: /embed_model <code>имя</code>",
+        "Сброс: /embed_model default"
+      ].join("\n") + tail
+    );
+  } catch (error) {
+    await sendMessage(chatId, `Не удалось получить список моделей: ${escapeMarkdown(errorMessage(error, "unknown error"))}`);
+  }
+}
+
+async function handleEmbedModelCommand(chatId, args) {
+  const raw = `${args || ""}`.trim();
+
+  if (!raw) {
+    const defaults = createDefaultGenerateInput();
+    const embedding = resolveEmbeddingConfig(defaults, chatId);
+    const session = getChatSession(chatId, false);
+    const selectedModel = normalizeModelName(session?.embeddingModel);
+
+    await sendMessage(
+      chatId,
+      [
+        `Текущая эмбеддинг модель: ${escapeMarkdown(embedding.model)}`,
+        `Provider: ${escapeMarkdown(embedding.provider)}`,
+        `Override для чата: ${escapeMarkdown(selectedModel || "none")}`,
+        "",
+        "Установить: /embed_model <code>имя</code>",
+        "Сбросить: /embed_model default",
+        "Список моделей: /embed_models"
+      ].join("\n")
+    );
+    return;
+  }
+
+  const command = raw.toLowerCase();
+  if (["default", "reset", "clear", "none"].includes(command)) {
+    setChatEmbeddingModel(chatId, "");
+    await saveState();
+
+    const defaults = createDefaultGenerateInput();
+    const embedding = resolveEmbeddingConfig(defaults, chatId);
+    await sendMessage(chatId, `Эмбеддинг модель для чата сброшена. Активная модель: ${embedding.model} (${embedding.provider}).`);
+    return;
+  }
+
+  try {
+    const defaults = createDefaultGenerateInput();
+    const embedding = resolveEmbeddingConfig(defaults, chatId);
+    const models = await fetchOllamaModelNames(embedding.baseUrl || defaults.rag.embedding.baseUrl);
+    const matched = findBestModelMatch(raw, models);
+    const selected = matched || normalizeModelName(raw);
+    setChatEmbeddingModel(chatId, selected);
+    await saveState();
+
+    if (matched) {
+      await sendMessage(chatId, `Эмбеддинг модель для чата установлена: ${escapeMarkdown(matched)}`);
+      return;
+    }
+
+    await sendMessage(
+      chatId,
+      [
+        `Model установлена как: <code>${escapeMarkdown(selected)}</code>`,
+        "В списке /embed_models точного совпадения не найдено.",
+        "Если модель не существует, индексация вернет ошибку."
+      ].join("\n")
+    );
+  } catch (error) {
+    await sendMessage(chatId, `Не удалось установить модель: ${escapeMarkdown(errorMessage(error, "unknown error"))}`);
   }
 }
 
@@ -749,10 +891,10 @@ async function processGenerationQueue() {
   while (generationQueue.length > 0) {
     const task = generationQueue.shift();
     await executeGeneration(task.chatId, task.parsed, task.isQuiz);
-    
+
     // Notify next users about their position
     for (const [i, waitTask] of generationQueue.entries()) {
-      void editMessageText(waitTask.chatId, waitTask.statusMsgId, `⏳ Вы в очереди. Ваше место: ${i + 1}`).catch(()=>{});
+      void editMessageText(waitTask.chatId, waitTask.statusMsgId, `⏳ Вы в очереди. Ваше место: ${i + 1}`).catch(() => { });
     }
   }
 
@@ -793,10 +935,10 @@ async function executeGeneration(chatId, parsed, isQuiz) {
         questionCount: 15 // make it a solid test
       };
     }
-    
+
     const materialCount = Array.isArray(input?.rag?.documentIds) ? input.rag.documentIds.length : 0;
-    const initialText = `🧠 Запускаю генерацию ${isQuiz ? "теста" : "курса"}: "${parsed.title}"${materialCount > 0 ? ` | материалов: ${materialCount}` : ""}\n[0%] Подготовка...`;
-    
+    const initialText = `🧠 Запускаю генерацию ${isQuiz ? "теста" : "курса"}: "${escapeMarkdown(parsed.title)}"${materialCount > 0 ? ` | материалов: ${materialCount}` : ""}\n[0%] Подготовка...`;
+
     const progressMsg = await sendMessage(chatId, initialText);
     progressMsgId = progressMsg?.message_id;
 
@@ -811,12 +953,12 @@ async function executeGeneration(chatId, parsed, isQuiz) {
         const messageText = `${message || ""}`.trim();
         const statusText = [
           `⏳ Прогресс: ${value}%`,
-          stageText ? `Текущий этап: ${stageText}` : "",
-          messageText ? `❯ ${messageText}` : ""
+          stageText ? `Текущий этап: ${escapeMarkdown(stageText)}` : "",
+          messageText ? `❯ ${escapeMarkdown(messageText)}` : ""
         ].filter(Boolean).join("\n");
-        
+
         if (progressMsgId) {
-          void editMessageText(chatId, progressMsgId, statusText).catch(() => {});
+          void editMessageText(chatId, progressMsgId, statusText).catch(() => { });
         }
       }
     });
@@ -829,7 +971,7 @@ async function executeGeneration(chatId, parsed, isQuiz) {
     });
 
     if (progressMsgId) {
-       void editMessageText(chatId, progressMsgId, `🚀 Упаковываю SCORM-архив...`).catch(()=>{});
+      void editMessageText(chatId, progressMsgId, `🚀 Упаковываю SCORM-архив...`).catch(() => { });
     }
 
     const archive = await exportCourseToScormArchive(savedCourse);
@@ -838,20 +980,25 @@ async function executeGeneration(chatId, parsed, isQuiz) {
       archive.zipBuffer,
       archive.fileName,
       [
-        `SCORM готов: ${savedCourse.title}`,
+        `SCORM готов: ${escapeMarkdown(savedCourse.title)}`,
         `Course ID: ${savedCourse.id}`,
         `SCO: ${archive.scoCount}`
       ].join("\n")
     );
 
     if (progressMsgId) {
-       void editMessageText(chatId, progressMsgId, `✅ SCORM сгенерирован успешно!`).catch(()=>{});
+      void editMessageText(chatId, progressMsgId, `✅ SCORM сгенерирован успешно!`).catch(() => { });
+    }
+
+    const previewMsg = buildScreenPreviewMessage(savedCourse, 0);
+    if (previewMsg.text) {
+      await sendMessage(chatId, previewMsg.text, previewMsg.reply_markup ? { reply_markup: previewMsg.reply_markup } : {});
     }
   } catch (error) {
     if (progressMsgId) {
-       void editMessageText(chatId, progressMsgId, `❌ Ошибка генерации: ${errorMessage(error, "unknown error")}`).catch(()=>{});
+      void editMessageText(chatId, progressMsgId, `❌ Ошибка генерации: ${escapeMarkdown(errorMessage(error, "unknown error"))}`).catch(() => { });
     } else {
-       await sendMessage(chatId, `Ошибка генерации: ${errorMessage(error, "unknown error")}`);
+      await sendMessage(chatId, `Ошибка генерации: ${escapeMarkdown(errorMessage(error, "unknown error"))}`);
     }
   } finally {
     activeChats.delete(chatKey);
@@ -891,7 +1038,7 @@ async function handleDocumentUpload(chatId, message) {
   }
 
   try {
-    await sendMessage(chatId, `Получил файл "${fileName}" (${formatFileSize(fileSize)}). Скачиваю...`);
+    await sendMessage(chatId, `Получил файл "${escapeMarkdown(fileName)}" (${formatFileSize(fileSize)}). Скачиваю...`);
 
     const { buffer } = await downloadTelegramFile(fileId);
     const material = await saveUploadedMaterial({
@@ -900,7 +1047,7 @@ async function handleDocumentUpload(chatId, message) {
       buffer
     });
 
-    await sendMessage(chatId, `Файл сохранён как materialId=${material.id}. Индексирую...`);
+    await sendMessage(chatId, `Файл сохранён как materialId=${escapeMarkdown(material.id)}. Индексирую...`);
 
     const defaults = createDefaultGenerateInput();
     const embedding = resolveEmbeddingConfig(defaults);
@@ -917,7 +1064,7 @@ async function handleDocumentUpload(chatId, message) {
         message: `${result?.message || "Indexing failed."}`
       });
       await saveState();
-      await sendMessage(chatId, `Не удалось проиндексировать "${material.fileName}": ${result?.message || "unknown error"}`);
+      await sendMessage(chatId, `Не удалось проиндексировать "${escapeMarkdown(material.fileName)}": ${escapeMarkdown(result?.message || "unknown error")}`);
       return true;
     }
 
@@ -939,7 +1086,7 @@ async function handleDocumentUpload(chatId, message) {
     await sendMessage(
       chatId,
       [
-        `Готово: "${material.fileName}" проиндексирован.`,
+        `Готово: "${escapeMarkdown(material.fileName)}" проиндексирован.`,
         `Chunks: ${result.chunksCount ?? 0}`,
         `Материалов в чате: ${materialCount}`,
         "Что вы хотите сделать дальше?"
@@ -956,7 +1103,7 @@ async function handleDocumentUpload(chatId, message) {
     );
     return true;
   } catch (error) {
-    await sendMessage(chatId, `Ошибка загрузки файла: ${errorMessage(error, "unknown error")}`);
+    await sendMessage(chatId, `Ошибка загрузки файла: ${escapeMarkdown(errorMessage(error, "unknown error"))}`);
     return true;
   }
 }
@@ -987,16 +1134,20 @@ async function handleMessage(message) {
   // ----- AUTHENTICATION FLOW -----
   if (dbUser.status !== "approved") {
     if (text === "/start") {
-      await sendMessage(chatId, `🎓 Добро пожаловать! Этот бот предназначен исключительно для сотрудников и студентов университета.\n\nПожалуйста, отправьте вашу корпоративную почту (она должна заканчиваться на ${ALLOWED_EMAIL_DOMAIN}), чтобы получить код доступа.`);
+      const domainsText = ALLOWED_EMAIL_DOMAINS.join(", ");
+      await sendMessage(chatId, `🎓 Добро пожаловать! Этот бот предназначен исключительно для сотрудников и студентов университета.\n\nПожалуйста, отправьте вашу корпоративную почту (она должна заканчиваться на ${domainsText}), чтобы получить код доступа.`);
       return;
     }
 
     if (dbUser.status === "guest") {
-      if (!text.endsWith(ALLOWED_EMAIL_DOMAIN) || !text.includes("@")) {
-        await sendMessage(chatId, `⚠️ Неверный формат. Почта должна оканчиваться на ${ALLOWED_EMAIL_DOMAIN}. Попробуйте снова:`);
+      const emailLower = text.toLowerCase();
+      const isValidDomain = ALLOWED_EMAIL_DOMAINS.some(domain => emailLower.endsWith(domain)) && emailLower.includes("@");
+
+      if (!isValidDomain) {
+        await sendMessage(chatId, `⚠️ Неверный формат. Почта должна оканчиваться на один из разрешенных доменов: ${ALLOWED_EMAIL_DOMAINS.join(", ")}. Попробуйте снова:`);
         return;
       }
-      
+
       const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
       const expiresAt = new Date(Date.now() + 10 * 60000); // 10 minutes
 
@@ -1007,9 +1158,9 @@ async function handleMessage(message) {
 
       const sent = await sendAuthCode(text, code);
       if (sent) {
-        await sendMessage(chatId, `✅ Мы отправили 6-значный код на почту ${text}.\nПожалуйста, введите его здесь (код действителен 10 минут):`);
+        await sendMessage(chatId, `✅ Мы отправили 6-значный код на почту ${escapeMarkdown(text)}.\nПожалуйста, введите его здесь (код действителен 10 минут):`);
       } else {
-        await sendMessage(chatId, `❌ Ошибка отправки письма на ${text}. Пожалуйста, свяжитесь с поддержкой.`);
+        await sendMessage(chatId, `❌ Ошибка отправки письма на ${escapeMarkdown(text)}. Пожалуйста, свяжитесь с поддержкой.`);
       }
       return;
     }
@@ -1022,15 +1173,15 @@ async function handleMessage(message) {
         } else {
           const attempts = dbUser.failedAttempts + 1;
           if (attempts >= 3) {
-             await prisma.telegramUser.update({ where: { id: dbUser.id }, data: { status: "guest", authCode: null, failedAttempts: 0 } });
-             await sendMessage(chatId, "❌ Превышено количество попыток или код устарел. Отправьте вашу почту заново.");
+            await prisma.telegramUser.update({ where: { id: dbUser.id }, data: { status: "guest", authCode: null, failedAttempts: 0 } });
+            await sendMessage(chatId, "❌ Превышено количество попыток или код устарел. Отправьте вашу почту заново.");
           } else {
-             await prisma.telegramUser.update({ where: { id: dbUser.id }, data: { failedAttempts: attempts } });
-             await sendMessage(chatId, `⚠️ Неверный код. Осталось попыток: ${3 - attempts}`);
+            await prisma.telegramUser.update({ where: { id: dbUser.id }, data: { failedAttempts: attempts } });
+            await sendMessage(chatId, `⚠️ Неверный код. Осталось попыток: ${3 - attempts}`);
           }
         }
       } else {
-         await sendMessage(chatId, "Укажите 6-значный код из письма.");
+        await sendMessage(chatId, "Укажите 6-значный код из письма.");
       }
       return;
     }
@@ -1071,6 +1222,16 @@ async function handleMessage(message) {
     return;
   }
 
+  if (command === "/embed_models") {
+    await handleListEmbedModelsCommand(chatId);
+    return;
+  }
+
+  if (command === "/embed_model") {
+    await handleEmbedModelCommand(chatId, args);
+    return;
+  }
+
   if (command === "/materials") {
     await sendMessage(chatId, buildMaterialsText(chatId));
     return;
@@ -1104,7 +1265,7 @@ async function handleMessage(message) {
       await prisma.telegramUser.update({ where: { id: String(chatId) }, data: { generationsCount: { increment: 1 } } });
     } catch (e) {
       await prisma.generationLog.update({ where: { id: log.id }, data: { status: "failed" } });
-      throw e; 
+      throw e;
     }
     return;
   }
@@ -1126,7 +1287,7 @@ async function handleMessage(message) {
       await prisma.telegramUser.update({ where: { id: String(chatId) }, data: { generationsCount: { increment: 1 } } });
     } catch (e) {
       await prisma.generationLog.update({ where: { id: log.id }, data: { status: "failed" } });
-      throw e; 
+      throw e;
     }
     return;
   }
@@ -1136,7 +1297,7 @@ async function handleMessage(message) {
       chatId,
       [
         "Неизвестный формат сообщения.",
-        "Используйте /create <тема> для генерации SCORM ZIP.",
+        "Используйте /create <code>тема</code> для генерации SCORM ZIP.",
         "Либо отправьте документ, чтобы загрузить материал.",
         "Команда /help покажет полный список."
       ].join("\n")
@@ -1152,13 +1313,13 @@ async function handleCallbackQuery(query) {
   const messageId = query.message?.message_id;
   const data = query.data || "";
 
-  await telegramCall("answerCallbackQuery", { callback_query_id: query.id }).catch(() => {});
+  await telegramCall("answerCallbackQuery", { callback_query_id: query.id }).catch(() => { });
 
   if (!chatId) return;
 
   if (data.startsWith("create_course^")) {
     const topic = data.split("^")[1] || "Без темы";
-    await editMessageText(chatId, messageId, `✅ Вы выбрали: Сгенерировать Курс по "${topic}"\n\nЗапускаем добавление в очередь...`);
+    await editMessageText(chatId, messageId, `✅ Вы выбрали: Сгенерировать Курс по "<b>${escapeMarkdown(topic)}</b>"\n\nЗапускаем добавление в очередь...`);
     // Mock user message logic to trigger handleCreateCommand directly
     await handleMessage({
       chat: { id: chatId },
@@ -1166,7 +1327,7 @@ async function handleCallbackQuery(query) {
     });
   } else if (data.startsWith("create_quiz^")) {
     const topic = data.split("^")[1] || "Без темы";
-    await editMessageText(chatId, messageId, `✅ Вы выбрали: Сгенерировать Тест по "${topic}"\n\nЗапускаем добавление в очередь...`);
+    await editMessageText(chatId, messageId, `✅ Вы выбрали: Сгенерировать Тест по "<b>${escapeMarkdown(topic)}</b>"\n\nЗапускаем добавление в очередь...`);
     await handleMessage({
       chat: { id: chatId },
       text: `/quiz ${topic}`
@@ -1177,7 +1338,104 @@ async function handleCallbackQuery(query) {
       chat: { id: chatId },
       text: `/clear_materials`
     });
+  } else if (data.startsWith("prev_")) {
+    const parts = data.split("_");
+    const courseId = parts[1];
+    const index = parseInt(parts[2] || "0", 10);
+    const course = await getCourse(courseId);
+    if (!course) {
+      await editMessageText(chatId, messageId, "Курс устарел или был удален с сервера.");
+      return;
+    }
+    const msg = buildScreenPreviewMessage(course, index);
+    if (msg.text) {
+      await editMessageText(chatId, messageId, msg.text, msg.reply_markup ? { reply_markup: msg.reply_markup } : {}).catch(() => {});
+    }
   }
+}
+
+function flattenCourseScreens(course) {
+  const screens = [];
+  if (Array.isArray(course?.modules)) {
+    course.modules.forEach((mod) => {
+      if (Array.isArray(mod?.sections)) {
+        mod.sections.forEach((sec) => {
+          if (Array.isArray(sec?.scos)) {
+            sec.scos.forEach((sco) => {
+              if (Array.isArray(sco?.screens)) {
+                sco.screens.forEach((scr) => {
+                  screens.push({
+                    heading: `${mod.title} / ${sec.title} / ${sco.title}`,
+                    title: scr.title,
+                    blocks: scr.blocks || [],
+                    isQuiz: false
+                  });
+                });
+              }
+            });
+          }
+        });
+      }
+    });
+  }
+
+  if (course?.finalTest?.enabled && Array.isArray(course.finalTest.questions)) {
+    screens.push({
+      heading: `${course.title} / ${course.finalTest.title || "Итоговый тест"}`,
+      title: `🏁 Тест: ${course.finalTest.questions.length} вопросов`,
+      blocks: course.finalTest.questions.map((q, idx) => ({
+        type: "text",
+        text: `${idx + 1}. ${q.prompt}`
+      })),
+      isQuiz: true
+    });
+  }
+
+  return screens;
+}
+
+function buildScreenPreviewMessage(course, globalIndex) {
+  const screens = flattenCourseScreens(course);
+  if (screens.length === 0) {
+    return { text: "Экранов не найдено", reply_markup: null };
+  }
+
+  let index = Math.max(0, Math.min(globalIndex, screens.length - 1));
+  const screen = screens[index];
+
+  let text = `📺 <b>Предпросмотр (Экран ${index + 1} из ${screens.length})</b>\n`;
+  text += `📍 <i>${escapeMarkdown(screen.heading)}</i>\n\n`;
+  text += `<b>${escapeMarkdown(screen.title)}</b>\n\n`;
+
+  let blockLines = [];
+  for (const block of screen.blocks) {
+    if (block.type === "note") continue;
+    if (block.type === "list" && Array.isArray(block.items)) {
+      for (const item of block.items) {
+        blockLines.push(`• ${escapeMarkdown(item)}`);
+      }
+    } else if (block.type === "image") {
+       blockLines.push(`🖼 [Изображение]`);
+    } else if (block.text) {
+       blockLines.push(`${escapeMarkdown(block.text)}`);
+    }
+  }
+
+  const content = blockLines.join("\n\n");
+  text += content.length > 3000 ? content.slice(0, 3000) + "..." : content;
+
+  const buttons = [];
+  if (index > 0) {
+    buttons.push({ text: "⬅️ Назад", callback_data: `prev_${course.id}_${index - 1}` });
+  }
+  if (index < screens.length - 1) {
+    buttons.push({ text: "Вперед ➡️", callback_data: `prev_${course.id}_${index + 1}` });
+  }
+
+  return {
+    text,
+    reply_markup: buttons.length > 0 ? JSON.stringify({ inline_keyboard: [buttons] }) : null
+  };
 }
 
 async function getUpdates(offset) {
@@ -1255,13 +1513,15 @@ async function run() {
   }
 
   botState.offset = offset;
-  await saveState().catch(() => {});
+  await saveState().catch(() => { });
   console.log("[telegram-bot] stopped");
 }
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
     stopped = true;
+    console.log(`[telegram-bot] received ${signal}, exiting immediately.`);
+    process.exit(0);
   });
 }
 
