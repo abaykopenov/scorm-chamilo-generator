@@ -35,7 +35,8 @@ function shouldRunTelegramBot() {
 function createChild(command, args, label) {
   const child = spawn(command, args, {
     stdio: "inherit",
-    env: process.env
+    env: process.env,
+    shell: true
   });
   child.on("error", (error) => {
     console.error(`[run-with-bot] ${label} process error:`, error instanceof Error ? error.message : error);
@@ -51,7 +52,7 @@ const mainProcess = createChild(npmCommand, mainArgs, "service");
 
 let botProcess = null;
 if (shouldRunTelegramBot()) {
-  botProcess = createChild(process.execPath, ["tools/telegram-bot.mjs"], "telegram-bot");
+  botProcess = createChild(`"${process.execPath}"`, ["tools/telegram-bot.mjs"], "telegram-bot");
   console.log("[run-with-bot] Telegram bot enabled.");
 } else {
   console.log("[run-with-bot] Telegram bot disabled (set TELEGRAM_BOT_TOKEN and TELEGRAM_BOT_ENABLED=true to enable).");

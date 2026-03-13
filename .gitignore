@@ -4,6 +4,21 @@ node_modules
 npm-debug.log*
 .agent
 .gemini
+.env
 .env.local
+.env.production
 
 /lib/generated/prisma
+
+# macOS artifacts
+.DS_Store
+._*
+
+# Logs
+*.log
+dev-err.log
+dev-out.log
+bot.log
+
+# Database (local dev)
+dev.db
