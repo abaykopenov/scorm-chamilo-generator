@@ -1,19 +1,24 @@
 import { clampInt, escapeMarkdown, PROGRESS_STEP_PERCENT, normalizeModelName,
   GENERATION_PROVIDER, GENERATION_MODEL, GENERATION_BASE_URL, GENERATION_TEMPERATURE,
-  EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_BASE_URL, RAG_TOP_K, BOT_LANGUAGE,
-  MAX_GENERATIONS_PER_HOUR } from "../config.mjs";
+  EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_BASE_URL, RAG_TOP_K, BOT_LANGUAGE } from "../config.mjs";
 import { sendMessage, editMessageText, sendDocument } from "../api.mjs";
-import { getChatSession, activeChats, saveState, getCourseSettings, checkRateLimit } from "../state.mjs";
+import { getChatSession, activeChats, saveState, getCourseSettings } from "../state.mjs";
 import { formatProgressMessage } from "../ui/progress.mjs";
 import { buildScreenPreviewMessage } from "../ui/preview.mjs";
 import { courseActionsKeyboard } from "../ui/keyboards.mjs";
 import { t } from "../i18n/index.mjs";
 import { createDefaultGenerateInput } from "../../../lib/course-defaults.js";
-import { generateCourseDraft } from "../../../lib/course-generator.js";
+import { generateCourseDraft, buildCoursePlan, buildCourseContent } from "../../../lib/course-generator.js";
 import { saveCourse } from "../../../lib/course-store.js";
 import { exportCourseToScormArchive } from "../../../lib/scorm/exporter.js";
 import { getIndexedMaterialSummary } from "../../../lib/material-indexer.js";
 import prisma from "../../../lib/db.js";
+import { startDraftPolls } from "../ui/draft-polls.mjs";
+import { checkRateLimit, MAX_GENERATIONS_PER_HOUR } from "../rate-limiter.mjs";
+import { validateCoursePayload, postProcessCourse } from "../../../lib/index.js";
+import { buildScormPackage, exportCourseToPdf, exportCourseToPptx } from "../../../lib/index.js";
+import { translateCourse } from "../../../lib/translation/translator-client.js";
+import { extractFactReferences } from "../../../lib/pipeline-helpers.js";
 
 const generationQueue = [];
 let isQueueRunning = false;
@@ -120,6 +125,7 @@ async function executeGeneration(chatId, parsed, isQuiz) {
   let lastProgress = -PROGRESS_STEP_PERCENT;
   let progressMsgId = null;
   const startedAt = Date.now();
+  const settings = getCourseSettings(chatId);
 
   try {
     const input = await buildGenerateInputForChat(chatId, parsed, isQuiz);
@@ -130,25 +136,57 @@ async function executeGeneration(chatId, parsed, isQuiz) {
 
     const progressMsg = await sendMessage(chatId, initialText);
     progressMsgId = progressMsg?.message_id;
+    const draftMsg = progressMsgId; // Renaming for clarity in new flow
 
-    const course = await generateCourseDraft(input, {
+    // 1. Build Course Plan
+    await editMessageText(chatId, draftMsg, `🔄 *Шаг 1 из 3: Генерация структуры*\\n\\n💡 Создаю план курса...`);
+    const planJson = await buildCoursePlan(input, {
       onProgress: (percent, stage, message) => {
         const value = clampInt(percent, 0, 0, 100);
         if (value < lastProgress + Math.max(10, PROGRESS_STEP_PERCENT) && value !== 100) return;
         lastProgress = value;
         const statusText = formatProgressMessage(value, stage || "", message || "", startedAt);
-        if (progressMsgId) void editMessageText(chatId, progressMsgId, statusText).catch(() => {});
+        if (draftMsg) void editMessageText(chatId, draftMsg, statusText).catch(() => {});
       }
     });
 
+    // 2. Build Course Content
+    const dbDocs = input.rag.enabled ? await getIndexedMaterialSummary(input.rag.documentIds) : [];
+    await editMessageText(chatId, draftMsg, `🔄 *Шаг 1 из 3: Генерация структуры*\\n\\n💡 План курса создан.\\n⚙️ Начинаю написание контента (может занять 5-15 минут)...`);
+    const finalJson = await buildCourseContent(planJson, dbDocs, (current, total, scTitle) => {
+      const pct = Math.round((current / total) * 100);
+      const msg = `🔄 *Шаг 2 из 3: Написание текста*\\n\\n⚙️ Экран: ${scTitle}\\n📊 Прогресс: ${pct}% (${current}/${total})`;
+      void editMessageText(chatId, draftMsg, msg).catch(() => {});
+    }, input.generation, isQuiz);
+
+    // 3. Post-process
+    const cleanedJson = postProcessCourse(finalJson);
+
+    // 4. Translate if necessary
+    await editMessageText(chatId, draftMsg, `🔄 *Шаг 3 из 3: Финализация*\\n\\n🧹 Очистка и перевод курса...`);
+
+    let translatedJson = cleanedJson;
+    const targetLang = (settings.outputLanguage && settings.outputLanguage !== "auto" && settings.outputLanguage !== "ru")
+      ? settings.outputLanguage
+      : "ru";
+
+    if (targetLang !== "ru") {
+      translatedJson = await translateCourse(cleanedJson, "ru", targetLang);
+    }
+
+    // 5. Final Validation
+    const validDraft = validateCoursePayload(translatedJson);
+
+    // Save course
     const savedCourse = await saveCourse({
-      ...course,
+      ...validDraft,
       generationStatus: "completed",
-      completedModules: Array.isArray(course?.modules) ? course.modules.length : 0,
+      completedModules: Array.isArray(validDraft?.modules) ? validDraft.modules.length : 0,
       lastError: ""
     });
 
-    if (progressMsgId) void editMessageText(chatId, progressMsgId, t("genPacking")).catch(() => {});
+    // Export to archives
+    await editMessageText(chatId, draftMsg, `📦 Упаковка архивов...`);
 
     const archive = await exportCourseToScormArchive(savedCourse);
     await sendDocument(chatId, archive.zipBuffer, archive.fileName, [
