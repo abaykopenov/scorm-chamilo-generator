@@ -177,7 +177,17 @@ async function processGenerationQueue() {
   isQueueRunning = true;
   while (generationQueue.length > 0) {
     const task = generationQueue.shift();
-    await executeGeneration(task.chatId, task.parsed, task.isQuiz);
+    try {
+      await executeGeneration(task.chatId, task.parsed, task.isQuiz);
+      if (task.logId) {
+        await prisma.generationLog.update({ where: { id: task.logId }, data: { status: "completed" } });
+        await prisma.telegramUser.update({ where: { id: String(task.chatId) }, data: { generationsCount: { increment: 1 } } });
+      }
+    } catch (e) {
+      if (task.logId) {
+        await prisma.generationLog.update({ where: { id: task.logId }, data: { status: "failed" } });
+      }
+    }
     for (const [i, waitTask] of generationQueue.entries()) {
       void editMessageText(waitTask.chatId, waitTask.statusMsgId, t("genQueued", i + 1)).catch(() => {});
     }
@@ -200,19 +210,19 @@ export async function handleCreateCommand(chatId, parsed, isQuiz = false) {
     return;
   }
 
-  const log = await prisma.generationLog.create({
-    data: { chatId: String(chatId), title: parsed.topic + (isQuiz ? " (Quiz)" : ""), status: "started" }
-  });
-
-  const statusMsg = await sendMessage(chatId, t("genQueued", generationQueue.length + 1));
-  generationQueue.push({ chatId, parsed, isQuiz, statusMsgId: statusMsg?.message_id });
-
   try {
-    await processGenerationQueue();
-    await prisma.generationLog.update({ where: { id: log.id }, data: { status: "completed" } });
-    await prisma.telegramUser.update({ where: { id: String(chatId) }, data: { generationsCount: { increment: 1 } } });
+    const log = await prisma.generationLog.create({
+      data: { chatId: String(chatId), title: parsed.topic + (isQuiz ? " (Quiz)" : ""), status: "started" }
+    });
+
+    const statusMsg = await sendMessage(chatId, t("genQueued", generationQueue.length + 1));
+    generationQueue.push({ chatId, parsed, isQuiz, statusMsgId: statusMsg?.message_id, logId: log.id });
+    
+    // Fire and forget: run queue in background so bot doesn't hang!
+    processGenerationQueue().catch(e => console.error("[executor] Queue error:", e));
   } catch (e) {
-    await prisma.generationLog.update({ where: { id: log.id }, data: { status: "failed" } });
+    console.error("[executor] Failed to enqueue:", e);
+    await sendMessage(chatId, "❌ Ошибка постановки в очередь генерации.");
   }
 }
 
