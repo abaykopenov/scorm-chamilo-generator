@@ -8,7 +8,7 @@ import { buildScreenPreviewMessage } from "../ui/preview.mjs";
 import { courseActionsKeyboard } from "../ui/keyboards.mjs";
 import { t } from "../i18n/index.mjs";
 import { createDefaultGenerateInput } from "../../../lib/course-defaults.js";
-import { generateCourseDraft, buildCoursePlan, buildCourseContent } from "../../../lib/course-generator.js";
+import { generateCourseDraft } from "../../../lib/course-generator.js";
 import { saveCourse } from "../../../lib/course-store.js";
 import { exportCourseToScormArchive } from "../../../lib/scorm/exporter.js";
 import { validateCourse } from "../../../lib/validation/course.js";
