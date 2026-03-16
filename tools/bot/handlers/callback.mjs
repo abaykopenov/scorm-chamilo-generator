@@ -84,6 +84,21 @@ export async function handleCallbackQuery(query) {
     return;
   }
 
+  // Language toggle from creation screen
+  if (data.startsWith("cfg_lang^")) {
+    const topic = data.slice("cfg_lang^".length);
+    const settings = getCourseSettings(chatId);
+    const cycle = { auto: "ru", ru: "en", en: "kk", kk: "auto" };
+    settings.outputLanguage = cycle[settings.outputLanguage || "auto"] || "auto";
+    setCourseSettings(chatId, settings);
+    await saveState();
+    
+    const text = buildSettingsText(topic, settings);
+    const kb = courseSettingsKeyboard(settings, topic);
+    await editMessageText(chatId, messageId, text, kb);
+    return;
+  }
+
   // ── Profile settings (separate screen, via /status or ⚙️) ──
 
   // Language toggle

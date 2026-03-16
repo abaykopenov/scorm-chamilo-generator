@@ -60,6 +60,11 @@ export function courseSettingsKeyboard(settings, topic) {
           { text: "▶️", callback_data: `cfg_inc^passingScore^${safeTopic}` }
         ],
         [
+          { text: "◀️", callback_data: `cfg_lang^${safeTopic}` },
+          { text: `🌐 Язык: ${s.outputLanguage === "ru" ? "🇷🇺 Рус" : s.outputLanguage === "kk" ? "🇰🇿 Каз" : s.outputLanguage === "en" ? "🇬🇧 Англ" : "🔄 Авто"}`, callback_data: "noop" },
+          { text: "▶️", callback_data: `cfg_lang^${safeTopic}` }
+        ],
+        [
           { text: t("settingsStart"), callback_data: `cfg_go^${safeTopic}` },
           { text: t("settingsCancel"), callback_data: "cfg_cancel" }
         ]
