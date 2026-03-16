@@ -131,11 +131,10 @@ async function executeGeneration(chatId, parsed, isQuiz) {
 
     const progressMsg = await sendMessage(chatId, initialText);
     progressMsgId = progressMsg?.message_id;
-    const draftMsg = progressMsgId; // Renaming for clarity in new flow
+    const draftMsg = progressMsgId; 
 
-    // 1. Build Course Plan
-    await editMessageText(chatId, draftMsg, `🔄 *Шаг 1 из 3: Генерация структуры*\\n\\n💡 Создаю план курса...`);
-    const planJson = await buildCoursePlan(input, {
+    // 1 & 2. Build Course Draft
+    const finalJson = await generateCourseDraft(input, {
       onProgress: (percent, stage, message) => {
         const value = clampInt(percent, 0, 0, 100);
         if (value < lastProgress + Math.max(10, PROGRESS_STEP_PERCENT) && value !== 100) return;
@@ -144,15 +143,6 @@ async function executeGeneration(chatId, parsed, isQuiz) {
         if (draftMsg) void editMessageText(chatId, draftMsg, statusText).catch(() => {});
       }
     });
-
-    // 2. Build Course Content
-    const dbDocs = input.rag.enabled ? await getIndexedMaterialSummary(input.rag.documentIds) : [];
-    await editMessageText(chatId, draftMsg, `🔄 *Шаг 1 из 3: Генерация структуры*\\n\\n💡 План курса создан.\\n⚙️ Начинаю написание контента (может занять 5-15 минут)...`);
-    const finalJson = await buildCourseContent(planJson, dbDocs, (current, total, scTitle) => {
-      const pct = Math.round((current / total) * 100);
-      const msg = `🔄 *Шаг 2 из 3: Написание текста*\\n\\n⚙️ Экран: ${scTitle}\\n📊 Прогресс: ${pct}% (${current}/${total})`;
-      void editMessageText(chatId, draftMsg, msg).catch(() => {});
-    }, input.generation, isQuiz);
 
     // 3. Post-process
     const cleanedJson = postProcessCourseBlocks(finalJson);
