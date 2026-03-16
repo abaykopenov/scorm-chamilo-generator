@@ -51,8 +51,19 @@ export function formatProgressMessage(percent, stage, message, startedAt) {
   lines.push(`⏱ ${timeStr}`);
 
   // Estimate remaining time based on progress
-  if (percent > 5 && percent < 100 && elapsed > 3) {
-    const totalEstimate = Math.round(elapsed / (percent / 100));
+  if (percent > 5 && percent < 100 && elapsed > 5) {
+    let totalEstimate = Math.round(elapsed / (percent / 100));
+    
+    // In early stages (metadata, parsing), percent jumps fast.
+    // Text generation takes ~10-15 minutes, so we set a minimum baseline.
+    if (percent < 30 && totalEstimate < 600) {
+      // Blend total estimate towards 10 minutes (600 sec)
+      totalEstimate = Math.max(totalEstimate, 600);
+    } else if (percent < 50 && totalEstimate < 300) {
+      // Blend total estimate towards 5 minutes (300 sec)
+      totalEstimate = Math.max(totalEstimate, 300);
+    }
+
     const remaining = totalEstimate - elapsed;
     if (remaining > 0) {
       const rMin = Math.floor(remaining / 60);
