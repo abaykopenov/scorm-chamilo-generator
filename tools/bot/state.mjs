@@ -133,7 +133,11 @@ export function getCourseSettings(chatId) {
     moduleCount: 2,
     sectionsPerModule: 2,
     questionCount: 8,
-    passingScore: 80
+    passingScore: 80,
+    outputLanguage: "auto",
+    audienceLevel: "student",
+    textStyle: "formal",
+    screensPerSco: 2
   };
 }
 

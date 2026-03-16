@@ -3,6 +3,10 @@ import { escapeMarkdown, normalizeModelName, RAG_TOP_K, MAX_UPLOAD_SIZE_MB, BOT_
 import { getChatSession, activeChats, getCourseSettings } from "../state.mjs";
 import { resolveGenerationConfig, resolveEmbeddingConfig } from "../generation/executor.mjs";
 import { createDefaultGenerateInput } from "../../../lib/course-defaults.js";
+import { profileSettingsKeyboard } from "../ui/keyboards.mjs";
+
+const AUDIENCE_LABELS = { student: "🎓 Студенты", specialist: "👨‍💼 Специалисты", advanced: "🏅 ПК" };
+const STYLE_LABELS = { formal: "📋 Формальный", conversational: "💬 Разговорный", academic: "🏛 Академический" };
 
 export async function handleStatus(chatId) {
   const defaults = createDefaultGenerateInput();
@@ -13,33 +17,22 @@ export async function handleStatus(chatId) {
   const selectedModel = normalizeModelName(session?.generationModel);
   const selectedEmbed = normalizeModelName(session?.embeddingModel);
   const settings = getCourseSettings(chatId);
+  const langLabels = { ru: "🇷🇺 RU", en: "🇬🇧 EN", kk: "🇰🇿 KZ", auto: "🔄 Авто" };
 
   const lines = [
-    "<b>⚙️ Статус бота:</b>",
+    "<b>👤 Профиль генерации</b>",
     "",
-    `🤖 <b>Генерация:</b>`,
-    `  Provider: ${escapeMarkdown(genConfig.provider)}`,
-    `  Model: ${escapeMarkdown(genConfig.model)}`,
-    `  Override: ${escapeMarkdown(selectedModel || "—")}`,
+    `🎓 <b>Аудитория:</b> ${AUDIENCE_LABELS[settings.audienceLevel] || AUDIENCE_LABELS.student}`,
+    `📝 <b>Стиль:</b> ${STYLE_LABELS[settings.textStyle] || STYLE_LABELS.formal}`,
+    `🤖 <b>Модель:</b> <code>${escapeMarkdown(selectedModel || genConfig.model)}</code>`,
+    `🌐 <b>Язык:</b> ${langLabels[settings.outputLanguage] || langLabels.auto}`,
     "",
-    `📊 <b>Эмбеддинги:</b>`,
-    `  Provider: ${escapeMarkdown(embConfig.provider)}`,
-    `  Model: ${escapeMarkdown(embConfig.model)}`,
-    `  Override: ${escapeMarkdown(selectedEmbed || "—")}`,
+    `📦 Материалов: ${materialCount}`,
+    `⚡ Генераций: ${activeChats.size}`,
     "",
-    `📐 <b>Настройки курса:</b>`,
-    `  Модулей: ${settings.moduleCount}`,
-    `  Разделов/модуль: ${settings.sectionsPerModule}`,
-    `  Вопросов: ${settings.questionCount}`,
-    `  Проходной балл: ${settings.passingScore}%`,
-    "",
-    `📦 <b>Текущее состояние:</b>`,
-    `  Язык: ${escapeMarkdown(BOT_LANGUAGE)}`,
-    `  RAG topK: ${RAG_TOP_K}`,
-    `  Max файл: ${MAX_UPLOAD_SIZE_MB} MB`,
-    `  Активных генераций: ${activeChats.size}`,
-    `  Материалов в чате: ${materialCount}`
+    `<i>Нажмите кнопку для изменения</i>`
   ];
 
-  await sendMessage(chatId, lines.join("\n"));
+  const kb = profileSettingsKeyboard(settings, selectedModel || genConfig.model);
+  await sendMessage(chatId, lines.join("\n"), kb);
 }

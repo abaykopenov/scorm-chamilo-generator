@@ -18,6 +18,15 @@ import prisma from "../../../lib/db.js";
 const generationQueue = [];
 let isQueueRunning = false;
 
+const CYRILLIC_RE = /[\u0400-\u04ff]/;
+
+function resolveOutputLanguage(outputLanguage, fallback) {
+  const lang = `${outputLanguage || ""}`.trim().toLowerCase();
+  if (lang === "ru" || lang === "en") return lang;
+  // "auto" — use fallback (BOT_LANGUAGE from env)
+  return fallback || "ru";
+}
+
 function resolveGenerationConfig(defaults, chatId) {
   const config = { ...defaults.generation };
   const session = chatId ? getChatSession(chatId, false) : null;
@@ -75,7 +84,7 @@ async function buildGenerateInputForChat(chatId, parsed, isQuiz) {
     titleHint: parsed.title,
     audience: parsed.audience || defaults.audience,
     learningGoals: parsed.goals.length > 0 ? parsed.goals : defaults.learningGoals,
-    language: BOT_LANGUAGE,
+    language: resolveOutputLanguage(settings.outputLanguage, BOT_LANGUAGE),
     structure: {
       ...defaults.structure,
       moduleCount: settings.moduleCount,

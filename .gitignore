@@ -22,3 +22,6 @@ bot.log
 
 # Database (local dev)
 dev.db
+.agents/
+.venv/
+*.pdf

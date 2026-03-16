@@ -51,3 +51,110 @@
 1. Вытащит из книги Прохорова и Боровкова идеальные куски.
 2. Отдаст первую цель в Модуль 1, а вторую — в Модуль 2.
 3. Writer-модель (gpt-oss:120b) напишет глубокие тексты без "отсебятины".
+
+---
+
+## 🖼️ Генерация изображений для курсов (TODO)
+
+> **Статус:** НЕ реализовано. Этот раздел документирует планируемую архитектуру.
+
+### Текущее состояние
+
+Сейчас система **анализирует** изображения из PDF (через `lib/multimodal/vision-llm.js` + `image-extractor.js`), но **не генерирует** новые. Экраны курса получают заглушки — SVG-плейсхолдеры (из `lib/postprocess/screen-generation.js`).
+
+### Варианты интеграции
+
+#### 1. Stable Diffusion (локальный, рекомендуется)
+
+**Модели:**
+- **SDXL 1.0** — хорошее качество, ~7 GB VRAM
+- **SD 3.5 Medium** — новее, лучше текст на картинках, ~12 GB VRAM
+- **Flux.1 Schnell** — быстрая генерация, ~12 GB VRAM
+
+**Серверы (API):**
+- **ComfyUI** (рекомендуется) — `http://127.0.0.1:8188/api/prompt`
+- **Automatic1111** — `http://127.0.0.1:7860/sdapi/v1/txt2img`
+- **Forge UI** — форк A1111 с оптимизацией VRAM
+
+**Env-переменные (планируемые):**
+```env
+# Stable Diffusion (ComfyUI)
+IMAGE_GENERATION_ENABLED=true
+IMAGE_GENERATION_PROVIDER=comfyui          # comfyui | automatic1111 | ollama | openai
+IMAGE_GENERATION_BASE_URL=http://127.0.0.1:8188
+IMAGE_GENERATION_MODEL=sdxl_base_1.0       # имя модели/checkpoint
+IMAGE_GENERATION_STEPS=20                  # шаги генерации (качество vs скорость)
+IMAGE_GENERATION_CFG_SCALE=7.0             # adherence to prompt
+IMAGE_GENERATION_WIDTH=1024
+IMAGE_GENERATION_HEIGHT=768
+IMAGE_GENERATION_STYLE=educational         # educational | technical | diagram | photo
+```
+
+#### 2. Ollama (multimodal модели)
+
+Некоторые модели поддерживают генерацию через Ollama:
+```env
+IMAGE_GENERATION_PROVIDER=ollama
+IMAGE_GENERATION_BASE_URL=http://127.0.0.1:11434
+IMAGE_GENERATION_MODEL=stable-diffusion    # или sdxl через ollama
+```
+
+#### 3. OpenAI DALL-E (облачный)
+
+```env
+IMAGE_GENERATION_PROVIDER=openai
+IMAGE_GENERATION_API_KEY=sk-...
+IMAGE_GENERATION_MODEL=dall-e-3
+```
+
+### Точки интеграции в коде
+
+| Файл | Что нужно сделать |
+|------|------------------|
+| `lib/postprocess/screen-generation.js` | Заменить SVG-заглушку на вызов генератора |
+| `lib/multimodal/image-generator.js` | **[NEW]** Модуль генерации изображений |
+| `lib/prompts.js` | Добавить промпт для создания image-prompt из темы экрана |
+| `lib/scorm/builder.js` | Включить сгенерированные файлы в SCORM-пакет |
+
+### Архитектура генерации (план)
+
+```
+Screen Title + Topic
+       ↓
+  LLM: "Сгенерируй prompt для иллюстрации по теме: {topic}"
+       ↓
+  Image Prompt (на английском)
+       ↓
+  Stable Diffusion API / DALL-E / Flux
+       ↓
+  PNG/WEBP файл → сохранить в SCORM assets/
+       ↓
+  block.type = "image", block.src = "assets/img_screen_1.webp"
+```
+
+### Установка Stable Diffusion (ComfyUI)
+
+```bash
+# 1. Клонировать ComfyUI
+git clone https://github.com/comfyanonymous/ComfyUI.git
+cd ComfyUI
+
+# 2. Установить зависимости
+pip install -r requirements.txt
+
+# 3. Скачать модель SDXL
+# Положить в ComfyUI/models/checkpoints/
+wget https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors \
+  -O models/checkpoints/sd_xl_base_1.0.safetensors
+
+# 4. Запустить сервер
+python main.py --listen 0.0.0.0 --port 8188
+```
+
+### Приоритет реализации
+
+1. ✅ **Анализ картинок из PDF** — уже работает (`vision-llm.js`)
+2. ⬜ **Генерация промптов** — LLM создает описание иллюстрации из темы экрана
+3. ⬜ **API-клиент** — модуль `image-generator.js` для ComfyUI/A1111/DALL-E
+4. ⬜ **Интеграция** — замена SVG-заглушек на реальные изображения
+5. ⬜ **Кэширование** — не генерировать повторно для тех же тем

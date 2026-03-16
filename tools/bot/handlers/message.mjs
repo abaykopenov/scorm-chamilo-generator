@@ -105,7 +105,8 @@ export async function handleMessage(message) {
     if (!parsed.ok) { await sendMessage(chatId, parsed.message); return; }
     // Show settings menu before generating
     const settings = getCourseSettings(chatId);
-    const headerText = `${t("settingsTitle", escapeMarkdown(parsed.title))}\n\n${t("settingsModules", settings.moduleCount)}\n${t("settingsSections", settings.sectionsPerModule)}\n${t("settingsQuestions", settings.questionCount)}\n${t("settingsPassScore", settings.passingScore)}`;
+    const headerText = `⚙️ <b>Настройки курса «${escapeMarkdown(parsed.title)}»</b>\n\n📦 Модулей: ${settings.moduleCount}\n📑 Разделов: ${settings.sectionsPerModule}\n⏱ Экранов/SCO: ${settings.screensPerSco || 2}\n❓ Вопросов: ${settings.questionCount}\n🎯 Балл: ${settings.passingScore}%`;
+    const session = getChatSession(chatId, false);
     const kb = courseSettingsKeyboard(settings, parsed.title);
     await sendMessage(chatId, headerText, kb);
     return;

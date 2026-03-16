@@ -1,4 +1,5 @@
 import { t } from "../i18n/index.mjs";
+import { GENERATION_MODEL } from "../config.mjs";
 
 export function mainKeyboard() {
   return {
@@ -29,9 +30,6 @@ export function afterUploadKeyboard(fileName) {
 
 export function courseSettingsKeyboard(settings, topic) {
   const s = settings;
-  // Telegram limits callback_data to 64 bytes.
-  // "cfg_inc^sectionsPerModule^" = ~26 chars. Leaves ~38 bytes for topic.
-  // Cyrillic = 2 bytes per char, so max ~19 Cyrillic chars.
   const safeTopic = `${topic || ""}`.slice(0, 18);
   return {
     reply_markup: {
@@ -45,6 +43,11 @@ export function courseSettingsKeyboard(settings, topic) {
           { text: "◀️", callback_data: `cfg_dec^sectionsPerModule^${safeTopic}` },
           { text: `📑 Разделов: ${s.sectionsPerModule}`, callback_data: "noop" },
           { text: "▶️", callback_data: `cfg_inc^sectionsPerModule^${safeTopic}` }
+        ],
+        [
+          { text: "◀️", callback_data: `cfg_dec^screensPerSco^${safeTopic}` },
+          { text: `⏱ Экранов: ${s.screensPerSco || 2}`, callback_data: "noop" },
+          { text: "▶️", callback_data: `cfg_inc^screensPerSco^${safeTopic}` }
         ],
         [
           { text: "◀️", callback_data: `cfg_dec^questionCount^${safeTopic}` },
@@ -65,6 +68,28 @@ export function courseSettingsKeyboard(settings, topic) {
   };
 }
 
+export function profileSettingsKeyboard(settings, modelName) {
+  const s = settings;
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "🎓 Аудитория", callback_data: "profile_audience" },
+          { text: "📝 Стиль", callback_data: "profile_style" }
+        ],
+        [
+          { text: "🤖 Модель", callback_data: "profile_model" },
+          { text: "🌐 Язык", callback_data: "profile_lang" }
+        ],
+        [
+          { text: "📚 Материалы", callback_data: "profile_mats" },
+          { text: "🔗 Ollama URL", callback_data: "profile_url" }
+        ]
+      ]
+    }
+  };
+}
+
 export function courseActionsKeyboard(courseId) {
   return {
     reply_markup: {
@@ -72,6 +97,11 @@ export function courseActionsKeyboard(courseId) {
         [
           { text: t("btnPreview"), callback_data: `prev_${courseId}_0` },
           { text: t("btnSendChamilo"), callback_data: `chamilo_${courseId}` }
+        ],
+        [
+          { text: "📥 ZIP", callback_data: `dl_${courseId}` },
+          { text: "📄 PDF", callback_data: `dlpdf_${courseId}` },
+          { text: "📊 PPTX", callback_data: `dlpptx_${courseId}` }
         ]
       ]
     }
@@ -94,6 +124,10 @@ export function navigationKeyboard(courseId, index, total) {
 
   const actionsRow = [
     { text: "📥 ZIP", callback_data: `dl_${courseId}` },
+    { text: "📄 PDF", callback_data: `dlpdf_${courseId}` },
+    { text: "📊 PPTX", callback_data: `dlpptx_${courseId}` }
+  ];
+  const extraRow = [
     { text: "📤 Chamilo", callback_data: `chamilo_${courseId}` },
     { text: "🗑", callback_data: `delbtn_${courseId}` }
   ];
@@ -101,5 +135,6 @@ export function navigationKeyboard(courseId, index, total) {
   const rows = [];
   if (navRow.length > 0) rows.push(navRow);
   rows.push(actionsRow);
+  rows.push(extraRow);
   return rows.length > 0 ? JSON.stringify({ inline_keyboard: rows }) : null;
 }
