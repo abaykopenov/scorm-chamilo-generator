@@ -1,8 +1,8 @@
 import { clampInt, escapeMarkdown, PROGRESS_STEP_PERCENT, normalizeModelName,
   GENERATION_PROVIDER, GENERATION_MODEL, GENERATION_BASE_URL, GENERATION_TEMPERATURE,
-  EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_BASE_URL, RAG_TOP_K, BOT_LANGUAGE } from "../config.mjs";
+  EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_BASE_URL, RAG_TOP_K, BOT_LANGUAGE, MAX_GENERATIONS_PER_HOUR } from "../config.mjs";
 import { sendMessage, editMessageText, sendDocument } from "../api.mjs";
-import { getChatSession, activeChats, saveState, getCourseSettings } from "../state.mjs";
+import { getChatSession, activeChats, saveState, getCourseSettings, checkRateLimit } from "../state.mjs";
 import { formatProgressMessage } from "../ui/progress.mjs";
 import { buildScreenPreviewMessage } from "../ui/preview.mjs";
 import { courseActionsKeyboard } from "../ui/keyboards.mjs";
@@ -11,8 +11,10 @@ import { createDefaultGenerateInput } from "../../../lib/course-defaults.js";
 import { generateCourseDraft } from "../../../lib/course-generator.js";
 import { saveCourse } from "../../../lib/course-store.js";
 import { exportCourseToScormArchive } from "../../../lib/scorm/exporter.js";
-import { validateCourse } from "../../../lib/validation/course.js";
-import { postProcessCourseBlocks } from "../../../lib/course-postprocess.js";
+import { getIndexedMaterialSummary } from "../../../lib/material-indexer.js";
+import { normalizeCoursePayload } from "../../../lib/validation/course.js";
+import prisma from "../../../lib/db.js";
+import { postprocessGeneratedCourse } from "../../../lib/course-postprocess.js";
 import { translateCourse } from "../../../lib/translation/translator-client.js";
 
 const generationQueue = [];
@@ -20,9 +22,11 @@ let isQueueRunning = false;
 
 const CYRILLIC_RE = /[\u0400-\u04ff]/;
 
+const SUPPORTED_LANGUAGES = ["ru", "en", "kk"];
+
 function resolveOutputLanguage(outputLanguage, fallback) {
   const lang = `${outputLanguage || ""}`.trim().toLowerCase();
-  if (lang === "ru" || lang === "en") return lang;
+  if (SUPPORTED_LANGUAGES.includes(lang)) return lang;
   // "auto" — use fallback (BOT_LANGUAGE from env)
   return fallback || "ru";
 }
@@ -106,6 +110,8 @@ async function buildGenerateInputForChat(chatId, parsed, isQuiz) {
     }
   };
 
+  console.log(`[executor] Language resolved: outputLanguage="${settings.outputLanguage}", BOT_LANGUAGE="${BOT_LANGUAGE}", final="${input.language}"`);
+
   if (isQuiz) {
     input.isQuizOnly = true;
     input.finalTest.questionCount = Math.max(input.finalTest.questionCount, 15);
@@ -145,22 +151,14 @@ async function executeGeneration(chatId, parsed, isQuiz) {
     });
 
     // 3. Post-process
-    const cleanedJson = postProcessCourseBlocks(finalJson);
+    const cleanedJson = postprocessGeneratedCourse(finalJson, input);
 
-    // 4. Translate if necessary
-    await editMessageText(chatId, draftMsg, `🔄 *Шаг 3 из 3: Финализация*\\n\\n🧹 Очистка и перевод курса...`);
-
-    let translatedJson = cleanedJson;
-    const targetLang = (settings.outputLanguage && settings.outputLanguage !== "auto" && settings.outputLanguage !== "ru")
-      ? settings.outputLanguage
-      : "ru";
-
-    if (targetLang !== "ru") {
-      translatedJson = await translateCourse(cleanedJson, "ru", targetLang);
-    }
+    // 4. Finalize
+    await editMessageText(chatId, draftMsg, `🔄 *Финализация*\\n\\n🧹 Очистка курса...`);
+    const translatedJson = cleanedJson;
 
     // 5. Final Validation
-    const validDraft = validateCourse(translatedJson);
+    const validDraft = normalizeCoursePayload(translatedJson);
 
     // Save course
     const savedCourse = await saveCourse({
