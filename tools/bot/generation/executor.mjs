@@ -11,14 +11,9 @@ import { createDefaultGenerateInput } from "../../../lib/course-defaults.js";
 import { generateCourseDraft, buildCoursePlan, buildCourseContent } from "../../../lib/course-generator.js";
 import { saveCourse } from "../../../lib/course-store.js";
 import { exportCourseToScormArchive } from "../../../lib/scorm/exporter.js";
-import { getIndexedMaterialSummary } from "../../../lib/material-indexer.js";
-import prisma from "../../../lib/db.js";
-import { startDraftPolls } from "../ui/draft-polls.mjs";
-import { checkRateLimit, MAX_GENERATIONS_PER_HOUR } from "../rate-limiter.mjs";
-import { validateCoursePayload, postProcessCourse } from "../../../lib/index.js";
-import { buildScormPackage, exportCourseToPdf, exportCourseToPptx } from "../../../lib/index.js";
+import { validateCourse } from "../../../lib/validation/course.js";
+import { postProcessCourseBlocks } from "../../../lib/course-postprocess.js";
 import { translateCourse } from "../../../lib/translation/translator-client.js";
-import { extractFactReferences } from "../../../lib/pipeline-helpers.js";
 
 const generationQueue = [];
 let isQueueRunning = false;
@@ -160,7 +155,7 @@ async function executeGeneration(chatId, parsed, isQuiz) {
     }, input.generation, isQuiz);
 
     // 3. Post-process
-    const cleanedJson = postProcessCourse(finalJson);
+    const cleanedJson = postProcessCourseBlocks(finalJson);
 
     // 4. Translate if necessary
     await editMessageText(chatId, draftMsg, `🔄 *Шаг 3 из 3: Финализация*\\n\\n🧹 Очистка и перевод курса...`);
@@ -175,7 +170,7 @@ async function executeGeneration(chatId, parsed, isQuiz) {
     }
 
     // 5. Final Validation
-    const validDraft = validateCoursePayload(translatedJson);
+    const validDraft = validateCourse(translatedJson);
 
     // Save course
     const savedCourse = await saveCourse({
