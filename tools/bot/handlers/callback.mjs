@@ -1,5 +1,5 @@
 import { isAllowedChat, escapeMarkdown } from "../config.mjs";
-import { sendMessage, editMessageText, telegramCall } from "../api.mjs";
+import { sendMessage, editMessageText, telegramCall, getModelParamSize } from "../api.mjs";
 import { getChatSession, getCourseSettings, setCourseSettings, setChatGenerationModel, saveState } from "../state.mjs";
 import { courseSettingsKeyboard, profileSettingsKeyboard } from "../ui/keyboards.mjs";
 import { buildScreenPreviewMessage } from "../ui/preview.mjs";
@@ -34,18 +34,20 @@ function buildSettingsText(topic, settings) {
   ].join("\n");
 }
 
-function buildProfileText(settings, modelName) {
+async function buildProfileText(settings, modelName) {
   const s = settings;
   const audienceLabel = AUDIENCE_LABELS[s.audienceLevel] || AUDIENCE_LABELS.student;
   const styleLabel = STYLE_LABELS[s.textStyle] || STYLE_LABELS.formal;
   const langLabels = { ru: "🇷🇺 Русский", en: "🇬🇧 English", kk: "🇰🇿 Қазақша", auto: "🔄 Авто" };
   const displayModel = (modelName || "auto").split(":")[0];
+  const paramSize = await getModelParamSize(modelName || "auto").catch(() => "");
+  const modelLabel = paramSize ? `${escapeMarkdown(displayModel)} (${escapeMarkdown(paramSize)})` : escapeMarkdown(displayModel);
   return [
     `👤 <b>Профиль генерации</b>`,
     ``,
     `🎓 <b>Аудитория:</b> ${audienceLabel}`,
     `📝 <b>Стиль:</b> ${styleLabel}`,
-    `🤖 <b>Модель:</b> <code>${escapeMarkdown(displayModel)}</code>`,
+    `🤖 <b>Модель:</b> <code>${modelLabel}</code>`,
     `🌐 <b>Язык:</b> ${langLabels[s.outputLanguage] || langLabels.auto}`,
     ``,
     `<i>Нажмите кнопку для изменения</i>`,
@@ -109,7 +111,7 @@ export async function handleCallbackQuery(query) {
     setCourseSettings(chatId, settings);
     await saveState();
     const session = getChatSession(chatId, false);
-    const text = buildProfileText(settings, session?.generationModel);
+    const text = await buildProfileText(settings, session?.generationModel);
     const kb = profileSettingsKeyboard(settings, session?.generationModel);
     await editMessageText(chatId, messageId, text, kb);
     return;
@@ -138,7 +140,7 @@ export async function handleCallbackQuery(query) {
     setChatGenerationModel(chatId, nextModel);
     await saveState();
     const settings = getCourseSettings(chatId);
-    const text = buildProfileText(settings, nextModel);
+    const text = await buildProfileText(settings, nextModel);
     const kb = profileSettingsKeyboard(settings, nextModel);
     await editMessageText(chatId, messageId, text, kb);
     return;
@@ -152,7 +154,7 @@ export async function handleCallbackQuery(query) {
     setCourseSettings(chatId, settings);
     await saveState();
     const session = getChatSession(chatId, false);
-    const text = buildProfileText(settings, session?.generationModel);
+    const text = await buildProfileText(settings, session?.generationModel);
     const kb = profileSettingsKeyboard(settings, session?.generationModel);
     await editMessageText(chatId, messageId, text, kb);
     return;
@@ -166,7 +168,7 @@ export async function handleCallbackQuery(query) {
     setCourseSettings(chatId, settings);
     await saveState();
     const session = getChatSession(chatId, false);
-    const text = buildProfileText(settings, session?.generationModel);
+    const text = await buildProfileText(settings, session?.generationModel);
     const kb = profileSettingsKeyboard(settings, session?.generationModel);
     await editMessageText(chatId, messageId, text, kb);
     return;
@@ -245,7 +247,7 @@ export async function handleCallbackQuery(query) {
   if (data === "profile_back") {
     const settings = getCourseSettings(chatId);
     const session = getChatSession(chatId, false);
-    const text = buildProfileText(settings, session?.generationModel);
+    const text = await buildProfileText(settings, session?.generationModel);
     const kb = profileSettingsKeyboard(settings, session?.generationModel);
     await editMessageText(chatId, messageId, text, kb);
     return;

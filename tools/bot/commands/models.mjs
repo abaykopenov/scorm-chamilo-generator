@@ -1,9 +1,23 @@
 import { sendMessage } from "../api.mjs";
 import { escapeMarkdown, normalizeModelName } from "../config.mjs";
-import { fetchOllamaModelNames } from "../api.mjs";
+import { fetchOllamaModelNames, fetchOllamaModelsWithDetails } from "../api.mjs";
 import { getChatSession, setChatGenerationModel, setChatEmbeddingModel, saveState } from "../state.mjs";
 import { resolveGenerationConfig, resolveEmbeddingConfig } from "../generation/executor.mjs";
 import { createDefaultGenerateInput } from "../../../lib/course-defaults.js";
+
+function formatSize(bytes) {
+  if (!bytes) return "";
+  const gb = bytes / (1024 * 1024 * 1024);
+  return gb >= 1 ? `${gb.toFixed(1)}GB` : `${(bytes / (1024 * 1024)).toFixed(0)}MB`;
+}
+
+function formatModelLine(name, paramSize, sizeBytes) {
+  const esc = escapeMarkdown(name);
+  const parts = [esc];
+  if (paramSize) parts.push(`(${escapeMarkdown(paramSize)})`);
+  else if (sizeBytes) parts.push(`(${formatSize(sizeBytes)})`);
+  return parts.join(" ");
+}
 
 function findBestModelMatch(requested, models) {
   const req = `${requested || ""}`.trim().toLowerCase();
@@ -22,15 +36,15 @@ export async function handleListModels(chatId) {
     const defaults = createDefaultGenerateInput();
     const gen = resolveGenerationConfig(defaults, chatId);
     const baseUrl = gen.baseUrl || defaults.generation.baseUrl;
-    const models = await fetchOllamaModelNames(baseUrl);
+    const models = await fetchOllamaModelsWithDetails(baseUrl);
     if (models.length === 0) { await sendMessage(chatId, `Ollama доступен, но список моделей пуст (${baseUrl}).`); return; }
     const session = getChatSession(chatId, false);
     const selected = normalizeModelName(session?.generationModel);
-    const preview = models.slice(0, 20).map(name => {
-      const esc = escapeMarkdown(name);
-      if (name === selected) return `✅ ${esc} (выбрана)`;
-      if (name === gen.model) return `🔹 ${esc} (активная)`;
-      return `• ${esc}`;
+    const preview = models.slice(0, 20).map(({ name, paramSize, sizeBytes }) => {
+      const label = formatModelLine(name, paramSize, sizeBytes);
+      if (name === selected) return `✅ ${label} — выбрана`;
+      if (name === gen.model) return `🔹 ${label} — активная`;
+      return `• ${label}`;
     });
     const tail = models.length > 20 ? `\n... и еще ${models.length - 20}` : "";
     await sendMessage(chatId, [`<b>Модели Ollama</b> (${baseUrl}):`, ...preview, "", "Выбрать: /model <code>имя</code>", "Сброс: /model default"].join("\n") + tail);

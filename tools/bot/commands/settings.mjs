@@ -1,4 +1,4 @@
-import { sendMessage } from "../api.mjs";
+import { sendMessage, getModelParamSize } from "../api.mjs";
 import { escapeMarkdown, normalizeModelName, RAG_TOP_K, MAX_UPLOAD_SIZE_MB, BOT_LANGUAGE } from "../config.mjs";
 import { getChatSession, activeChats, getCourseSettings } from "../state.mjs";
 import { resolveGenerationConfig, resolveEmbeddingConfig } from "../generation/executor.mjs";
@@ -19,12 +19,16 @@ export async function handleStatus(chatId) {
   const settings = getCourseSettings(chatId);
   const langLabels = { ru: "🇷🇺 RU", en: "🇬🇧 EN", kk: "🇰🇿 KZ", auto: "🔄 Авто" };
 
+  const modelName = selectedModel || genConfig.model;
+  const paramSize = await getModelParamSize(modelName).catch(() => "");
+  const modelLabel = paramSize ? `${escapeMarkdown(modelName)} (${escapeMarkdown(paramSize)})` : escapeMarkdown(modelName);
+
   const lines = [
     "<b>👤 Профиль генерации</b>",
     "",
     `🎓 <b>Аудитория:</b> ${AUDIENCE_LABELS[settings.audienceLevel] || AUDIENCE_LABELS.student}`,
     `📝 <b>Стиль:</b> ${STYLE_LABELS[settings.textStyle] || STYLE_LABELS.formal}`,
-    `🤖 <b>Модель:</b> <code>${escapeMarkdown(selectedModel || genConfig.model)}</code>`,
+    `🤖 <b>Модель:</b> <code>${modelLabel}</code>`,
     `🌐 <b>Язык:</b> ${langLabels[settings.outputLanguage] || langLabels.auto}`,
     "",
     `📦 Материалов: ${materialCount}`,

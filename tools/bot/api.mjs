@@ -77,13 +77,44 @@ export async function downloadTelegramFile(fileId) {
 }
 
 export async function fetchOllamaModelNames(baseUrl) {
+  const models = await fetchOllamaModelsWithDetails(baseUrl);
+  return models.map(m => m.name);
+}
+
+export async function fetchOllamaModelsWithDetails(baseUrl) {
   const normalized = `${baseUrl || ""}`.trim().replace(/\/$/, "");
   if (!normalized) throw new Error("Ollama base URL is empty.");
   const response = await fetch(`${normalized}/api/tags`, { method: "GET", signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error(`Ollama /api/tags returned HTTP ${response.status}.`);
   const payload = await response.json().catch(() => ({}));
-  const names = Array.isArray(payload?.models)
-    ? payload.models.map(item => `${item?.name || ""}`.trim()).filter(Boolean)
-    : [];
-  return Array.from(new Set(names));
+  if (!Array.isArray(payload?.models)) return [];
+
+  return payload.models.map(item => {
+    const name = `${item?.name || ""}`.trim();
+    const sizeBytes = item?.size || 0;
+    const paramSize = item?.details?.parameter_size || "";
+    return { name, sizeBytes, paramSize };
+  }).filter(m => m.name);
+}
+
+// Cache for model param sizes
+let _modelSizeCache = {};
+let _modelSizeCacheTime = 0;
+
+export async function getModelParamSize(modelName, baseUrl) {
+  const now = Date.now();
+  if (now - _modelSizeCacheTime > 60_000) {
+    try {
+      const models = await fetchOllamaModelsWithDetails(baseUrl || "http://127.0.0.1:11434");
+      _modelSizeCache = {};
+      for (const m of models) {
+        _modelSizeCache[m.name] = m.paramSize;
+        // Also cache without tag for partial matches
+        const baseName = m.name.split(":")[0];
+        if (!_modelSizeCache[baseName]) _modelSizeCache[baseName] = m.paramSize;
+      }
+      _modelSizeCacheTime = now;
+    } catch { /* ignore */ }
+  }
+  return _modelSizeCache[modelName] || _modelSizeCache[modelName?.split(":")[0]] || "";
 }

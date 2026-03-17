@@ -59,7 +59,7 @@ async function run() {
             await handleCallbackQuery(update.callback_query);
           }
         } catch (err) {
-          console.error(`[bot] update error ${updateId}:`, err?.message || err);
+          console.error(`[bot] update error ${updateId}:`, err?.message || err, err?.stack || "");
           // Offset is already advanced — this update will NOT replay
         }
       }
