@@ -31,9 +31,27 @@ function resolveOutputLanguage(outputLanguage, fallback) {
   return fallback || "ru";
 }
 
+const CLOUD_PROVIDERS = {
+  groq:       { baseUrl: "https://api.groq.com/openai/v1",       defaultModel: "llama-3.3-70b-versatile" },
+  gemini:     { baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", defaultModel: "gemini-2.0-flash" },
+  openrouter: { baseUrl: "https://openrouter.ai/api/v1",         defaultModel: "deepseek/deepseek-chat-v3-0324:free" },
+};
+
 function resolveGenerationConfig(defaults, chatId) {
   const config = { ...defaults.generation };
   const session = chatId ? getChatSession(chatId, false) : null;
+
+  // Cloud provider takes priority
+  if (session?.cloudProvider && session?.cloudApiKey && CLOUD_PROVIDERS[session.cloudProvider]) {
+    const cloud = CLOUD_PROVIDERS[session.cloudProvider];
+    config.provider = "openai-compatible";
+    config.apiKey = session.cloudApiKey;
+    config.model = session.cloudModelName || cloud.defaultModel;
+    config.baseUrl = cloud.baseUrl;
+    return config;
+  }
+
+  // Fallback to local Ollama
   const sessionModel = normalizeModelName(session?.generationModel);
   if (GENERATION_PROVIDER) config.provider = GENERATION_PROVIDER;
   if (GENERATION_MODEL) config.model = GENERATION_MODEL;

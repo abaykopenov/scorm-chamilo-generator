@@ -20,14 +20,26 @@ export async function handleStatus(chatId) {
   const langLabels = { ru: "🇷🇺 RU", en: "🇬🇧 EN", kk: "🇰🇿 KZ", auto: "🔄 Авто" };
 
   const modelName = selectedModel || genConfig.model;
-  const paramSize = await getModelParamSize(modelName).catch(() => "");
-  const modelLabel = paramSize ? `${escapeMarkdown(modelName)} (${escapeMarkdown(paramSize)})` : escapeMarkdown(modelName);
+
+  // Cloud provider display
+  const CLOUD_LABELS = { groq: "⚡ Groq", gemini: "💎 Gemini", openrouter: "🌐 OpenRouter" };
+  const cloudProvider = session?.cloudProvider || "";
+  let providerLabel, modelLabel;
+  if (cloudProvider && session?.cloudApiKey) {
+    providerLabel = CLOUD_LABELS[cloudProvider] || `☁️ ${cloudProvider}`;
+    modelLabel = escapeMarkdown(session?.cloudModelName || "default");
+  } else {
+    providerLabel = "💻 Ollama (локальный)";
+    const paramSize = await getModelParamSize(modelName).catch(() => "");
+    modelLabel = paramSize ? `${escapeMarkdown(modelName)} (${escapeMarkdown(paramSize)})` : escapeMarkdown(modelName);
+  }
 
   const lines = [
     "<b>👤 Профиль генерации</b>",
     "",
     `🎓 <b>Аудитория:</b> ${AUDIENCE_LABELS[settings.audienceLevel] || AUDIENCE_LABELS.student}`,
     `📝 <b>Стиль:</b> ${STYLE_LABELS[settings.textStyle] || STYLE_LABELS.formal}`,
+    `☁️ <b>Провайдер:</b> ${providerLabel}`,
     `🤖 <b>Модель:</b> <code>${modelLabel}</code>`,
     `🌐 <b>Язык:</b> ${langLabels[settings.outputLanguage] || langLabels.auto}`,
     "",
@@ -37,6 +49,6 @@ export async function handleStatus(chatId) {
     `<i>Нажмите кнопку для изменения</i>`
   ];
 
-  const kb = profileSettingsKeyboard(settings, selectedModel || genConfig.model);
+  const kb = profileSettingsKeyboard(settings, selectedModel || genConfig.model, session?.cloudProvider);
   await sendMessage(chatId, lines.join("\n"), kb);
 }

@@ -1,6 +1,6 @@
 import { isAllowedChat, escapeMarkdown } from "../config.mjs";
 import { sendMessage, editMessageText, telegramCall, getModelParamSize } from "../api.mjs";
-import { getChatSession, getCourseSettings, setCourseSettings, setChatGenerationModel, saveState } from "../state.mjs";
+import { getChatSession, getCourseSettings, setCourseSettings, setChatGenerationModel, setChatCloudProvider, saveState } from "../state.mjs";
 import { courseSettingsKeyboard, profileSettingsKeyboard } from "../ui/keyboards.mjs";
 import { buildScreenPreviewMessage } from "../ui/preview.mjs";
 import { t } from "../i18n/index.mjs";
@@ -34,19 +34,35 @@ function buildSettingsText(topic, settings) {
   ].join("\n");
 }
 
-async function buildProfileText(settings, modelName) {
+const CLOUD_PROVIDER_LABELS = {
+  groq: "⚡ Groq",
+  gemini: "💎 Gemini",
+  openrouter: "🌐 OpenRouter"
+};
+
+async function buildProfileText(settings, modelName, session) {
   const s = settings;
   const audienceLabel = AUDIENCE_LABELS[s.audienceLevel] || AUDIENCE_LABELS.student;
   const styleLabel = STYLE_LABELS[s.textStyle] || STYLE_LABELS.formal;
   const langLabels = { ru: "🇷🇺 Русский", en: "🇬🇧 English", kk: "🇰🇿 Қазақша", auto: "🔄 Авто" };
-  const displayModel = (modelName || "auto").split(":")[0];
-  const paramSize = await getModelParamSize(modelName || "auto").catch(() => "");
-  const modelLabel = paramSize ? `${escapeMarkdown(displayModel)} (${escapeMarkdown(paramSize)})` : escapeMarkdown(displayModel);
+  const cloudProvider = session?.cloudProvider || "";
+  let providerLabel, modelLabel;
+  if (cloudProvider && session?.cloudApiKey) {
+    providerLabel = CLOUD_PROVIDER_LABELS[cloudProvider] || `☁️ ${cloudProvider}`;
+    const cloudModel = session?.cloudModelName || "default";
+    modelLabel = escapeMarkdown(cloudModel);
+  } else {
+    providerLabel = "💻 Ollama (локальный)";
+    const displayModel = (modelName || "auto").split(":")[0];
+    const paramSize = await getModelParamSize(modelName || "auto").catch(() => "");
+    modelLabel = paramSize ? `${escapeMarkdown(displayModel)} (${escapeMarkdown(paramSize)})` : escapeMarkdown(displayModel);
+  }
   return [
     `👤 <b>Профиль генерации</b>`,
     ``,
     `🎓 <b>Аудитория:</b> ${audienceLabel}`,
     `📝 <b>Стиль:</b> ${styleLabel}`,
+    `☁️ <b>Провайдер:</b> ${providerLabel}`,
     `🤖 <b>Модель:</b> <code>${modelLabel}</code>`,
     `🌐 <b>Язык:</b> ${langLabels[s.outputLanguage] || langLabels.auto}`,
     ``,
@@ -111,8 +127,8 @@ export async function handleCallbackQuery(query) {
     setCourseSettings(chatId, settings);
     await saveState();
     const session = getChatSession(chatId, false);
-    const text = await buildProfileText(settings, session?.generationModel);
-    const kb = profileSettingsKeyboard(settings, session?.generationModel);
+    const text = await buildProfileText(settings, session?.generationModel, session);
+    const kb = profileSettingsKeyboard(settings, session?.generationModel, session?.cloudProvider);
     await editMessageText(chatId, messageId, text, kb);
     return;
   }
@@ -140,8 +156,9 @@ export async function handleCallbackQuery(query) {
     setChatGenerationModel(chatId, nextModel);
     await saveState();
     const settings = getCourseSettings(chatId);
-    const text = await buildProfileText(settings, nextModel);
-    const kb = profileSettingsKeyboard(settings, nextModel);
+    const session2 = getChatSession(chatId, false);
+    const text = await buildProfileText(settings, nextModel, session2);
+    const kb = profileSettingsKeyboard(settings, nextModel, session2?.cloudProvider);
     await editMessageText(chatId, messageId, text, kb);
     return;
   }
@@ -154,8 +171,8 @@ export async function handleCallbackQuery(query) {
     setCourseSettings(chatId, settings);
     await saveState();
     const session = getChatSession(chatId, false);
-    const text = await buildProfileText(settings, session?.generationModel);
-    const kb = profileSettingsKeyboard(settings, session?.generationModel);
+    const text = await buildProfileText(settings, session?.generationModel, session);
+    const kb = profileSettingsKeyboard(settings, session?.generationModel, session?.cloudProvider);
     await editMessageText(chatId, messageId, text, kb);
     return;
   }
@@ -168,8 +185,8 @@ export async function handleCallbackQuery(query) {
     setCourseSettings(chatId, settings);
     await saveState();
     const session = getChatSession(chatId, false);
-    const text = await buildProfileText(settings, session?.generationModel);
-    const kb = profileSettingsKeyboard(settings, session?.generationModel);
+    const text = await buildProfileText(settings, session?.generationModel, session);
+    const kb = profileSettingsKeyboard(settings, session?.generationModel, session?.cloudProvider);
     await editMessageText(chatId, messageId, text, kb);
     return;
   }
@@ -247,9 +264,85 @@ export async function handleCallbackQuery(query) {
   if (data === "profile_back") {
     const settings = getCourseSettings(chatId);
     const session = getChatSession(chatId, false);
-    const text = await buildProfileText(settings, session?.generationModel);
-    const kb = profileSettingsKeyboard(settings, session?.generationModel);
+    const text = await buildProfileText(settings, session?.generationModel, session);
+    const kb = profileSettingsKeyboard(settings, session?.generationModel, session?.cloudProvider);
     await editMessageText(chatId, messageId, text, kb);
+    return;
+  }
+
+  // ── Cloud provider selection ──
+  if (data === "profile_cloud") {
+    const session = getChatSession(chatId, false);
+    const currentCloud = session?.cloudProvider || "";
+    const text = [
+      `☁️ <b>Выберите провайдер ИИ:</b>`,
+      ``,
+      `💻 <b>Ollama</b> — локальный (бесплатно, нужен GPU)`,
+      `⚡ <b>Groq</b> — облачный (бесплатно, очень быстрый)`,
+      `💎 <b>Gemini</b> — облачный (бесплатно, Google)`,
+      `🌐 <b>OpenRouter</b> — множество моделей`,
+      ``,
+      `Текущий: <b>${currentCloud ? (CLOUD_PROVIDER_LABELS[currentCloud] || currentCloud) : "💻 Ollama"}</b>`,
+    ].join("\n");
+    await editMessageText(chatId, messageId, text, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "💻 Ollama (локальный)", callback_data: "cloud_select_ollama" }],
+          [{ text: "⚡ Groq (бесплатно)", callback_data: "cloud_select_groq" }],
+          [{ text: "💎 Gemini (бесплатно)", callback_data: "cloud_select_gemini" }],
+          [{ text: "🌐 OpenRouter", callback_data: "cloud_select_openrouter" }],
+          [{ text: "⬅️ Назад", callback_data: "profile_back" }]
+        ]
+      }
+    });
+    return;
+  }
+
+  if (data === "cloud_select_ollama") {
+    setChatCloudProvider(chatId, "", "", "");
+    await saveState();
+    const settings = getCourseSettings(chatId);
+    const session = getChatSession(chatId, false);
+    const text = await buildProfileText(settings, session?.generationModel, session);
+    const kb = profileSettingsKeyboard(settings, session?.generationModel, session?.cloudProvider);
+    await editMessageText(chatId, messageId, `✅ Переключено на локальный Ollama.\n\n${text}`, kb);
+    return;
+  }
+
+  if (data.startsWith("cloud_select_")) {
+    const provider = data.slice("cloud_select_".length);
+    const session = getChatSession(chatId, true);
+    session._awaitingCloudApiKey = provider;
+    await saveState();
+    const urls = {
+      groq: "https://console.groq.com/keys",
+      gemini: "https://aistudio.google.com/apikey",
+      openrouter: "https://openrouter.ai/keys"
+    };
+    const label = CLOUD_PROVIDER_LABELS[provider] || provider;
+    await editMessageText(chatId, messageId,
+      `🔑 <b>Введите API-ключ для ${label}:</b>\n\n` +
+      `Получить ключ: ${urls[provider] || "—"}\n\n` +
+      `Отправьте ключ текстовым сообщением.`
+    );
+    return;
+  }
+
+  if (data === "cloud_set_model") {
+    const session = getChatSession(chatId, true);
+    session._awaitingCloudModel = true;
+    await saveState();
+    const defaults = {
+      groq: "llama-3.3-70b-versatile",
+      gemini: "gemini-2.0-flash",
+      openrouter: "deepseek/deepseek-chat-v3-0324:free"
+    };
+    const current = session?.cloudModelName || defaults[session?.cloudProvider] || "";
+    await editMessageText(chatId, messageId,
+      `🤖 <b>Введите название модели:</b>\n\n` +
+      `Текущая: <code>${escapeMarkdown(current)}</code>\n\n` +
+      `Отправьте название модели текстовым сообщением.`
+    );
     return;
   }
 

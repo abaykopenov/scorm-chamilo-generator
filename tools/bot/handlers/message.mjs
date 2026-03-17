@@ -1,7 +1,7 @@
 import { isAllowedChat, escapeMarkdown } from "../config.mjs";
 import { sendMessage } from "../api.mjs";
-import { getChatSession, getCourseSettings, saveState } from "../state.mjs";
-import { mainKeyboard, courseSettingsKeyboard } from "../ui/keyboards.mjs";
+import { getChatSession, getCourseSettings, setChatCloudProvider, saveState } from "../state.mjs";
+import { mainKeyboard, courseSettingsKeyboard, profileSettingsKeyboard } from "../ui/keyboards.mjs";
 import { t } from "../i18n/index.mjs";
 import { handleAuth } from "../auth.mjs";
 import { handleStart, handleHelp } from "../commands/start.mjs";
@@ -61,6 +61,38 @@ export async function handleMessage(message) {
   }
 
   if (!text) return;
+
+  // Cloud API key input
+  const session = getChatSession(chatId, false);
+  if (session?._awaitingCloudApiKey) {
+    const provider = session._awaitingCloudApiKey;
+    const CLOUD_DEFAULTS = {
+      groq: "llama-3.3-70b-versatile",
+      gemini: "gemini-2.0-flash",
+      openrouter: "deepseek/deepseek-chat-v3-0324:free"
+    };
+    const defaultModel = CLOUD_DEFAULTS[provider] || "";
+    setChatCloudProvider(chatId, provider, text, defaultModel);
+    delete session._awaitingCloudApiKey;
+    await saveState();
+    await sendMessage(chatId,
+      `✅ Провайдер <b>${provider.toUpperCase()}</b> настроен!\n` +
+      `🤖 Модель: <code>${escapeMarkdown(defaultModel)}</code>\n\n` +
+      `Чтобы сменить модель, зайдите в /status → ☁️ Провайдер.`
+    );
+    return;
+  }
+
+  // Cloud model name input
+  if (session?._awaitingCloudModel) {
+    session.cloudModelName = text.trim();
+    delete session._awaitingCloudModel;
+    await saveState();
+    await sendMessage(chatId,
+      `✅ Модель изменена на: <code>${escapeMarkdown(text.trim())}</code>`
+    );
+    return;
+  }
 
   // Check if there's an active Chamilo flow
   if (getChamiloFlow(chatId)) {

@@ -73,8 +73,9 @@ export function courseSettingsKeyboard(settings, topic) {
   };
 }
 
-export function profileSettingsKeyboard(settings, modelName) {
+export function profileSettingsKeyboard(settings, modelName, cloudProvider) {
   const s = settings;
+  const cloudLabel = cloudProvider ? `☁️ ${cloudProvider.toUpperCase()}` : "💻 Ollama";
   return {
     reply_markup: {
       inline_keyboard: [
@@ -87,8 +88,11 @@ export function profileSettingsKeyboard(settings, modelName) {
           { text: "🌐 Язык", callback_data: "profile_lang" }
         ],
         [
+          { text: `☁️ Провайдер: ${cloudLabel}`, callback_data: "profile_cloud" }
+        ],
+        [
           { text: "📚 Материалы", callback_data: "profile_mats" },
-          { text: "🔗 Ollama URL", callback_data: "profile_url" }
+          { text: "🔗 URL", callback_data: "profile_url" }
         ]
       ]
     }

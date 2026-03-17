@@ -35,6 +35,9 @@ function normalizeSession(value) {
     materialIds: materialIds.slice(-MAX_CHAT_MATERIALS),
     generationModel: normalizeModelName(value?.generationModel),
     embeddingModel: normalizeModelName(value?.embeddingModel),
+    cloudProvider: `${value?.cloudProvider || ""}`.trim(),
+    cloudApiKey: `${value?.cloudApiKey || ""}`.trim(),
+    cloudModelName: `${value?.cloudModelName || ""}`.trim(),
     courseSettings: value?.courseSettings || null,
     files,
     updatedAt: `${value?.updatedAt || ""}`.trim() || nowIso()
@@ -116,6 +119,15 @@ export function setChatEmbeddingModel(chatId, modelName) {
   session.embeddingModel = normalizeModelName(modelName);
   session.updatedAt = nowIso();
   return session.embeddingModel;
+}
+
+export function setChatCloudProvider(chatId, provider, apiKey, modelName) {
+  const session = getChatSession(chatId, true);
+  if (!session) return;
+  session.cloudProvider = `${provider || ""}`.trim();
+  session.cloudApiKey = `${apiKey || ""}`.trim();
+  session.cloudModelName = `${modelName || ""}`.trim();
+  session.updatedAt = nowIso();
 }
 
 export function clearSessionMaterials(chatId) {
