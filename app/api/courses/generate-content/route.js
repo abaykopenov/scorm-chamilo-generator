@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { generateCourseContentFromOutline } from "@/lib/course-generator";
 import { saveCourse } from "@/lib/course-store";
+import { normalizeGenerateInput } from "@/lib/validation";
+import { buildRagContext } from "@/lib/rag-service";
+import {
+  createGenerationPlan,
+  createPlannerScopedRagContext
+} from "@/lib/generation-planner";
+import { enrichRagContextForPlanner } from "@/lib/generation/batch-generator";
 
 function toErrorMessage(error) {
   return error instanceof Error ? error.message : `${error || "Unknown error"}`;
@@ -10,11 +17,31 @@ export const maxDuration = 300;
 
 export async function POST(request) {
   const body = await request.json().catch(() => ({}));
-  const { payload, outline, ragContext, plannerPlan } = body;
+  const { payload, outline } = body;
+  let { ragContext, plannerPlan } = body;
   const streamMode = request.nextUrl.searchParams.get("stream") === "1";
 
-  if (!payload || !outline || !ragContext || !plannerPlan) {
-    return NextResponse.json({ ok: false, message: "Missing required fields (payload, outline, ragContext, plannerPlan)" }, { status: 400 });
+  if (!payload || !outline) {
+    const missing = [!payload && "payload", !outline && "outline"].filter(Boolean);
+    console.error("[generate-content] Missing fields:", missing.join(", "), "| body keys:", Object.keys(body));
+    return NextResponse.json({ ok: false, message: "Missing required fields: " + missing.join(", ") }, { status: 400 });
+  }
+
+  // Rebuild ragContext and plannerPlan on the server if not provided by client
+  if (!ragContext || !plannerPlan) {
+    console.log("[generate-content] Rebuilding ragContext/plannerPlan from payload on server...");
+    try {
+      const input = normalizeGenerateInput(payload);
+      const initialRag = await buildRagContext(input);
+      ragContext = await enrichRagContextForPlanner(input, initialRag, {});
+      plannerPlan = createGenerationPlan(input, ragContext, { factsPerSlot: 3 });
+    } catch (error) {
+      console.error("[generate-content] Failed to rebuild context:", toErrorMessage(error));
+      return NextResponse.json(
+        { ok: false, message: "Failed to rebuild generation context: " + toErrorMessage(error) },
+        { status: 500 }
+      );
+    }
   }
 
   if (!streamMode) {

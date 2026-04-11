@@ -18,6 +18,7 @@ function normalizeSessionFileEntry(value) {
     fileName: `${value?.fileName || "file"}`.trim() || "file",
     mimeType: `${value?.mimeType || ""}`.trim(),
     size: Math.max(0, Number(value?.size) || 0),
+    filePath: `${value?.filePath || ""}`.trim(), // Local file path for conversion
     status: ["indexed", "failed", "uploaded"].includes(`${value?.status || ""}`) ? value.status : "uploaded",
     message: `${value?.message || ""}`.trim(),
     updatedAt: `${value?.updatedAt || ""}`.trim() || nowIso()
@@ -39,6 +40,10 @@ function normalizeSession(value) {
     cloudApiKey: `${value?.cloudApiKey || ""}`.trim(),
     cloudModelName: `${value?.cloudModelName || ""}`.trim(),
     courseSettings: value?.courseSettings || null,
+    chamiloProfile: normalizeChamiloProfile(value?.chamiloProfile),
+    chamiloProfiles: Array.isArray(value?.chamiloProfiles)
+      ? value.chamiloProfiles.map(normalizeChamiloProfile).filter(Boolean)
+      : [],
     files,
     updatedAt: `${value?.updatedAt || ""}`.trim() || nowIso()
   };
@@ -158,6 +163,71 @@ export function setCourseSettings(chatId, settings) {
   if (!session) return;
   session.courseSettings = { ...getCourseSettings(chatId), ...settings };
   session.updatedAt = nowIso();
+}
+
+// ═══ Chamilo Profile ═══
+
+function normalizeChamiloProfile(value) {
+  if (!value || typeof value !== "object") return null;
+  const baseUrl = `${value.baseUrl || ""}`.trim();
+  const username = `${value.username || ""}`.trim();
+  const password = `${value.password || ""}`.trim();
+  const courseCode = `${value.courseCode || ""}`.trim();
+  if (!baseUrl && !username) return null;
+  return { baseUrl, username, password, courseCode };
+}
+
+export function getChamiloProfile(chatId) {
+  const session = getChatSession(chatId, false);
+  return session?.chamiloProfile || null;
+}
+
+export function setChamiloProfile(chatId, profile) {
+  const session = getChatSession(chatId, true);
+  if (!session) return;
+  session.chamiloProfile = normalizeChamiloProfile(profile);
+  session.updatedAt = nowIso();
+}
+
+export function clearChamiloProfile(chatId) {
+  const session = getChatSession(chatId, false);
+  if (!session) return;
+  session.chamiloProfile = null;
+  session.updatedAt = nowIso();
+}
+
+export function getChamiloProfiles(chatId) {
+  const session = getChatSession(chatId, false);
+  return session?.chamiloProfiles || [];
+}
+
+export function addChamiloProfile(chatId, profile) {
+  const session = getChatSession(chatId, true);
+  if (!session) return;
+  const normalized = normalizeChamiloProfile(profile);
+  if (!normalized) return;
+  // Check if profile with same baseUrl+username already exists
+  const existing = session.chamiloProfiles.findIndex(
+    p => p.baseUrl === normalized.baseUrl && p.username === normalized.username
+  );
+  if (existing >= 0) {
+    session.chamiloProfiles[existing] = normalized;
+  } else {
+    session.chamiloProfiles.push(normalized);
+  }
+  // Also set as active
+  session.chamiloProfile = normalized;
+  session.updatedAt = nowIso();
+}
+
+export function switchChamiloProfile(chatId, index) {
+  const session = getChatSession(chatId, false);
+  if (!session) return null;
+  const profiles = session.chamiloProfiles || [];
+  if (index < 0 || index >= profiles.length) return null;
+  session.chamiloProfile = { ...profiles[index] };
+  session.updatedAt = nowIso();
+  return session.chamiloProfile;
 }
 
 // Rate limiting

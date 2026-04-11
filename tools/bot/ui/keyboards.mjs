@@ -16,12 +16,21 @@ export function mainKeyboard() {
 }
 
 export function afterUploadKeyboard(fileName) {
-  const short = `${fileName || ""}`.slice(0, 30);
+  const short = `${fileName || ""}`.slice(0, 20);
+  const isPdf = /\.pdf$/i.test(fileName);
+  const isDocx = /\.docx?$/i.test(fileName);
+  const convertBtn = isPdf
+    ? [{ text: "📦 PDF → SCORM", callback_data: `pdf2scorm^${short}` }]
+    : isDocx
+      ? [{ text: "📦 DOCX → SCORM", callback_data: `docx2scorm^${short}` }]
+      : [{ text: "📦 Конвертировать в SCORM", callback_data: `docx2scorm^${short}` }];
+
   return {
     reply_markup: {
       inline_keyboard: [
         [{ text: t("btnCreateCourse"), callback_data: `create_course^${short}` }],
         [{ text: t("btnCreateQuiz"), callback_data: `create_quiz^${short}` }],
+        convertBtn,
         [{ text: t("btnClearMaterials"), callback_data: "clear_materials" }]
       ]
     }
@@ -30,7 +39,7 @@ export function afterUploadKeyboard(fileName) {
 
 export function courseSettingsKeyboard(settings, topic) {
   const s = settings;
-  const safeTopic = `${topic || ""}`.slice(0, 18);
+  const safeTopic = `${topic || ""}`.slice(0, 12);
   return {
     reply_markup: {
       inline_keyboard: [
@@ -99,7 +108,8 @@ export function profileSettingsKeyboard(settings, modelName, cloudProvider) {
   };
 }
 
-export function courseActionsKeyboard(courseId) {
+export function courseActionsKeyboard(courseId, theme) {
+  const themeLabel = theme === "dark" ? "🌙 Тёмная" : theme === "corporate" ? "🏢 Корп." : "☀️ Классика";
   return {
     reply_markup: {
       inline_keyboard: [
@@ -111,6 +121,10 @@ export function courseActionsKeyboard(courseId) {
           { text: "📥 ZIP", callback_data: `dl_${courseId}` },
           { text: "📄 PDF", callback_data: `dlpdf_${courseId}` },
           { text: "📊 PPTX", callback_data: `dlpptx_${courseId}` }
+        ],
+        [
+          { text: `🎨 Тема: ${themeLabel}`, callback_data: `theme_${courseId}` },
+          { text: "📝 Авто-тест", callback_data: `autotest_${courseId}` }
         ]
       ]
     }

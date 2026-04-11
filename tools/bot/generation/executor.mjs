@@ -1,6 +1,7 @@
 import { clampInt, escapeMarkdown, PROGRESS_STEP_PERCENT, normalizeModelName,
-  GENERATION_PROVIDER, GENERATION_MODEL, GENERATION_BASE_URL, GENERATION_TEMPERATURE,
-  EMBEDDING_PROVIDER, EMBEDDING_MODEL, EMBEDDING_BASE_URL, RAG_TOP_K, BOT_LANGUAGE, MAX_GENERATIONS_PER_HOUR } from "../config.mjs";
+  GENERATION_PROVIDER, GENERATION_MODEL, GENERATION_BASE_URL, GENERATION_API_KEY, GENERATION_TEMPERATURE,
+  BOT_LANGUAGE, MAX_GENERATIONS_PER_HOUR } from "../config.mjs";
+import { isRagLlmEnabled } from "../../../lib/rag-llm-client.js";
 import { sendMessage, editMessageText, sendDocument } from "../api.mjs";
 import { getChatSession, activeChats, saveState, getCourseSettings, checkRateLimit } from "../state.mjs";
 import { formatProgressMessage } from "../ui/progress.mjs";
@@ -11,7 +12,6 @@ import { createDefaultGenerateInput } from "../../../lib/course-defaults.js";
 import { generateCourseDraft } from "../../../lib/course-generator.js";
 import { saveCourse } from "../../../lib/course-store.js";
 import { exportCourseToScormArchive } from "../../../lib/scorm/exporter.js";
-import { getIndexedMaterialSummary } from "../../../lib/material-indexer.js";
 import { normalizeCoursePayload } from "../../../lib/validation/course.js";
 import prisma from "../../../lib/db.js";
 import { postprocessGeneratedCourse } from "../../../lib/course-postprocess.js";
@@ -40,8 +40,9 @@ const CLOUD_PROVIDERS = {
 function resolveGenerationConfig(defaults, chatId) {
   const config = { ...defaults.generation };
   const session = chatId ? getChatSession(chatId, false) : null;
+  const sessionModel = normalizeModelName(session?.generationModel);
 
-  // Cloud provider takes priority
+  // 1) Cloud provider via TG settings (/status → Провайдер)
   if (session?.cloudProvider && session?.cloudApiKey && CLOUD_PROVIDERS[session.cloudProvider]) {
     const cloud = CLOUD_PROVIDERS[session.cloudProvider];
     config.provider = "openai-compatible";
@@ -51,47 +52,41 @@ function resolveGenerationConfig(defaults, chatId) {
     return config;
   }
 
-  // Fallback to local Ollama
-  const sessionModel = normalizeModelName(session?.generationModel);
+  // 2) Local Ollama model via TG settings (/status → Модель)
+  if (sessionModel) {
+    config.provider = "ollama";
+    config.model = sessionModel;
+    config.baseUrl = "http://127.0.0.1:11434";
+    config.apiKey = "";
+    return config;
+  }
+
+  // 3) Fallback: env vars (if any) or defaults from course-defaults.js
   if (GENERATION_PROVIDER) config.provider = GENERATION_PROVIDER;
   if (GENERATION_MODEL) config.model = GENERATION_MODEL;
   if (GENERATION_BASE_URL) config.baseUrl = GENERATION_BASE_URL;
+  if (GENERATION_API_KEY) config.apiKey = GENERATION_API_KEY;
   if (GENERATION_TEMPERATURE != null) config.temperature = GENERATION_TEMPERATURE;
-  if (sessionModel) {
-    config.model = sessionModel;
-    if (config.provider === "template") config.provider = "ollama";
-  }
   return config;
 }
 
+// Embedding config no longer needed - RAG is handled by external RAG-LLM service
+// Kept for backwards compatibility, returns minimal config
 function resolveEmbeddingConfig(defaults, chatId) {
-  const fb = defaults?.rag?.embedding || { provider: "ollama", baseUrl: "http://127.0.0.1:11434", model: "nomic-embed-text" };
-  const provider = EMBEDDING_PROVIDER || fb.provider;
-  const config = {
-    provider: ["ollama", "openai-compatible"].includes(provider) ? provider : "ollama",
-    baseUrl: EMBEDDING_BASE_URL || fb.baseUrl,
-    model: EMBEDDING_MODEL || fb.model
+  return {
+    provider: "rag-llm",
+    baseUrl: process.env.RAG_LLM_URL || "http://127.0.0.1:8000",
+    model: "rag-llm"
   };
-  const session = chatId ? getChatSession(chatId, false) : null;
-  const sessionEmbed = normalizeModelName(session?.embeddingModel);
-  if (sessionEmbed) config.model = sessionEmbed;
-  return config;
 }
 
 export { resolveGenerationConfig, resolveEmbeddingConfig };
 
+// Returns material IDs from session without validation (RAG-LLM handles availability)
 async function pruneUnavailableMaterials(chatId) {
   const session = getChatSession(chatId, false);
-  if (!session || session.materialIds.length === 0) return [];
-  const current = session.materialIds.slice();
-  const summary = await getIndexedMaterialSummary(current).catch(() => []);
-  const available = new Set(summary.map(i => i.id));
-  const filtered = current.filter(id => available.has(id));
-  if (filtered.length !== current.length) {
-    session.materialIds = filtered;
-    await saveState();
-  }
-  return filtered;
+  if (!session || !session.materialIds || session.materialIds.length === 0) return [];
+  return session.materialIds.slice();
 }
 
 async function buildGenerateInputForChat(chatId, parsed, isQuiz) {
@@ -121,7 +116,7 @@ async function buildGenerateInputForChat(chatId, parsed, isQuiz) {
     generation,
     rag: {
       ...defaults.rag,
-      enabled: materialIds.length > 0,
+      enabled: materialIds.length > 0 || isRagLlmEnabled(),
       topK: RAG_TOP_K,
       documentIds: materialIds,
       embedding
@@ -129,6 +124,7 @@ async function buildGenerateInputForChat(chatId, parsed, isQuiz) {
   };
 
   console.log(`[executor] Language resolved: outputLanguage="${settings.outputLanguage}", BOT_LANGUAGE="${BOT_LANGUAGE}", final="${input.language}"`);
+  console.log(`[executor] Generation: provider="${generation.provider}", model="${generation.model}", baseUrl="${generation.baseUrl}", hasApiKey=${Boolean(generation.apiKey)}, apiKeyPrefix="${(generation.apiKey||'').slice(0,8)}..."`);
 
   if (isQuiz) {
     input.isQuizOnly = true;

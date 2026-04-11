@@ -25,3 +25,4 @@ dev.db
 .agents/
 .venv/
 *.pdf
+.data/

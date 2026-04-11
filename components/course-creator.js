@@ -456,6 +456,7 @@ export function CourseCreator({ initialHistory = [] }) {
           <select id="language" value={form.language} onChange={(event) => updateField("language", event.target.value)}>
             <option value="ru">Русский</option>
             <option value="en">English</option>
+            <option value="kk">Қазақша</option>
           </select>
         </div>
         <div className="field">
@@ -542,7 +543,7 @@ export function CourseCreator({ initialHistory = [] }) {
             setGeneratedOutlineContent((current) => ({ ...current, outline: newOutline }));
           }}
           onCancel={() => setOutlineEditorVisible(false)}
-          onSubmit={handleGenerateContentFromOutline}
+          onConfirm={handleGenerateContentFromOutline}
         />
       ) : null}
     </form>

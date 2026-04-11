@@ -1,6 +1,6 @@
 import { isAllowedChat, escapeMarkdown } from "../config.mjs";
 import { sendMessage, editMessageText, telegramCall, getModelParamSize } from "../api.mjs";
-import { getChatSession, getCourseSettings, setCourseSettings, setChatGenerationModel, setChatCloudProvider, saveState } from "../state.mjs";
+import { getChatSession, getCourseSettings, setCourseSettings, setChatGenerationModel, setChatCloudProvider, saveState, switchChamiloProfile } from "../state.mjs";
 import { courseSettingsKeyboard, profileSettingsKeyboard } from "../ui/keyboards.mjs";
 import { buildScreenPreviewMessage } from "../ui/preview.mjs";
 import { t } from "../i18n/index.mjs";
@@ -8,7 +8,7 @@ import { handleCreateCommand, parseCreateArgs } from "../generation/executor.mjs
 import { getCourse } from "../../../lib/course-store.js";
 import { exportCourseToScormArchive } from "../../../lib/scorm/exporter.js";
 import { sendDocument } from "../api.mjs";
-import { startChamiloFlow } from "../commands/chamilo.mjs";
+import { startChamiloFlow, startChamiloSetup, deleteChamiloProfile, startChamiloFieldEdit, handleChamiloSettings } from "../commands/chamilo.mjs";
 
 const SETTINGS_LIMITS = {
   moduleCount: { min: 1, max: 10, step: 1 },
@@ -382,10 +382,327 @@ export async function handleCallbackQuery(query) {
     return;
   }
 
+  // Chamilo settings callbacks
+  if (data === "chamilo_edit") {
+    await editMessageText(chatId, messageId, "⚙️ Настройка Chamilo...\n\n🌐 Введите URL Chamilo (например: https://lms.university.edu):");
+    startChamiloSetup(chatId);
+    return;
+  }
+
+  if (data === "chamilo_delete") {
+    await deleteChamiloProfile(chatId);
+    await editMessageText(chatId, messageId, "🗑 Профиль Chamilo удалён.\n\nПри следующей загрузке потребуется ввести данные заново.");
+    return;
+  }
+
+  // Individual Chamilo field edits
+  if (data === "chm_set_url") {
+    startChamiloFieldEdit(chatId, "url");
+    await editMessageText(chatId, messageId, "🌐 Введите новый URL Chamilo:");
+    return;
+  }
+  if (data === "chm_set_user") {
+    startChamiloFieldEdit(chatId, "username");
+    await editMessageText(chatId, messageId, "👤 Введите новый логин Chamilo:");
+    return;
+  }
+  if (data === "chm_set_pass") {
+    startChamiloFieldEdit(chatId, "password");
+    await editMessageText(chatId, messageId, "🔑 Введите новый пароль Chamilo:");
+    return;
+  }
+  if (data === "chm_set_course") {
+    startChamiloFieldEdit(chatId, "courseCode");
+    await editMessageText(chatId, messageId, "📁 Введите новый код курса (cidReq):");
+    return;
+  }
+
+  // Switch between Chamilo profiles
+  if (data.startsWith("chm_switch_")) {
+    const idx = parseInt(data.slice(11), 10);
+    const switched = switchChamiloProfile(chatId, idx);
+    if (switched) {
+      await saveState();
+      await editMessageText(chatId, messageId, `✅ Переключено на: ${escapeMarkdown(switched.username)}@${escapeMarkdown((switched.baseUrl || "").replace(/https?:\/\//, ""))}`);
+      // Show updated settings
+      await handleChamiloSettings(chatId);
+    } else {
+      await editMessageText(chatId, messageId, "❌ Профиль не найден.");
+    }
+    return;
+  }
+
   if (data === "clear_materials") {
     await editMessageText(chatId, messageId, "Очищаю...");
     const { handleClearMaterials } = await import("../commands/materials.mjs");
     await handleClearMaterials(chatId);
+    return;
+  }
+
+  // DOCX → SCORM direct conversion (no LLM)
+  if (data.startsWith("docx2scorm^")) {
+    try {
+      await editMessageText(chatId, messageId, "📦 Конвертирую DOCX → SCORM...");
+      const session = getChatSession(chatId, false);
+      const files = session?.files || [];
+
+      // Find last uploaded .docx file
+      const docxFile = [...files].reverse().find(f =>
+        /\.docx?$/i.test(f.fileName) && f.materialId
+      );
+
+      if (!docxFile) {
+        await sendMessage(chatId,
+          "❌ Не найден .docx файл.\n\nЗагрузите файл в формате .docx и попробуйте снова."
+        );
+        return;
+      }
+
+      // Use file path from session (stored during upload)
+      const filePath = docxFile.filePath;
+      const fileName = docxFile.fileName;
+      if (!filePath) {
+        await sendMessage(chatId, "❌ Файл не найден на диске. Загрузите заново.");
+        return;
+      }
+
+      // Convert DOCX → course object
+      const { convertDocxFileToScorm } = await import("../../../lib/converters/docx-to-scorm.js");
+      const course = await convertDocxFileToScorm(filePath, fileName);
+
+      // Save course for preview/download
+      const { saveCourse } = await import("../../../lib/course-store.js");
+      await saveCourse(course);
+
+      // Export to SCORM ZIP
+      const archive = await exportCourseToScormArchive(course);
+
+      // Count stats
+      const totalScreens = course.modules.reduce((t, m) =>
+        t + m.sections.reduce((s, sec) =>
+          s + sec.scos.reduce((sc, sco) => sc + (sco.screens?.length || 0), 0), 0), 0);
+
+      await sendMessage(chatId,
+        `✅ <b>SCORM-пакет готов!</b>\n\n` +
+        `📄 Из: <code>${escapeMarkdown(fileName)}</code>\n` +
+        `📦 Модулей: ${course.modules.length}\n` +
+        `📑 Разделов: ${course.modules.reduce((t, m) => t + m.sections.length, 0)}\n` +
+        `🖥 Экранов: ${totalScreens}\n\n` +
+        `<i>Текст сохранён без изменений.</i>`
+      );
+
+      await sendDocument(chatId, archive.zipBuffer, archive.fileName,
+        `📦 SCORM: ${escapeMarkdown(course.title)}`
+      );
+
+      // Show actions: preview, Chamilo upload, download formats
+      const { courseActionsKeyboard } = await import("../ui/keyboards.mjs");
+      await sendMessage(chatId,
+        `📤 <b>Действия с курсом:</b>`,
+        courseActionsKeyboard(course.id)
+      );
+    } catch (e) {
+      console.error(`[bot] docx2scorm error: ${e?.message || e}`);
+      await sendMessage(chatId,
+        `❌ Ошибка конвертации: ${escapeMarkdown(e?.message || "unknown")}`
+      );
+    }
+    return;
+  }
+
+  // PDF → SCORM direct conversion (no LLM)
+  if (data.startsWith("pdf2scorm^")) {
+    try {
+      await editMessageText(chatId, messageId, "📦 Конвертирую PDF → SCORM...");
+      const session = getChatSession(chatId, false);
+      const files = session?.files || [];
+
+      const pdfFile = [...files].reverse().find(f =>
+        /\.pdf$/i.test(f.fileName) && f.materialId
+      );
+
+      if (!pdfFile) {
+        await sendMessage(chatId,
+          "❌ Не найден .pdf файл.\n\nЗагрузите файл в формате .pdf и попробуйте снова."
+        );
+        return;
+      }
+
+      const filePath = pdfFile.filePath;
+      const fileName = pdfFile.fileName;
+      if (!filePath) {
+        await sendMessage(chatId, "❌ Файл не найден на диске. Загрузите заново.");
+        return;
+      }
+
+      const { convertPdfFileToScorm } = await import("../../../lib/converters/pdf-to-scorm.js");
+      const course = await convertPdfFileToScorm(filePath, fileName);
+
+      const { saveCourse } = await import("../../../lib/course-store.js");
+      await saveCourse(course);
+
+      const archive = await exportCourseToScormArchive(course);
+
+      const totalScreens = course.modules.reduce((t, m) =>
+        t + m.sections.reduce((s, sec) =>
+          s + sec.scos.reduce((sc, sco) => sc + (sco.screens?.length || 0), 0), 0), 0);
+
+      await sendMessage(chatId,
+        `✅ <b>SCORM-пакет из PDF готов!</b>\n\n` +
+        `📄 Из: <code>${escapeMarkdown(fileName)}</code>\n` +
+        `📦 Модулей: ${course.modules.length}\n` +
+        `🖥 Экранов: ${totalScreens}\n\n` +
+        `<i>Текст сохранён без изменений.</i>`
+      );
+
+      await sendDocument(chatId, archive.zipBuffer, archive.fileName,
+        `📦 SCORM: ${escapeMarkdown(course.title)}`
+      );
+
+      const { courseActionsKeyboard } = await import("../ui/keyboards.mjs");
+      await sendMessage(chatId,
+        `📤 <b>Действия с курсом:</b>`,
+        courseActionsKeyboard(course.id)
+      );
+    } catch (e) {
+      console.error(`[bot] pdf2scorm error: ${e?.message || e}`);
+      await sendMessage(chatId,
+        `❌ Ошибка конвертации PDF: ${escapeMarkdown(e?.message || "unknown")}`
+      );
+    }
+    return;
+  }
+
+  // Theme cycling: default → dark → corporate → default
+  if (data.startsWith("theme_")) {
+    const courseId = data.slice(6);
+    try {
+      const course = await getCourse(courseId);
+      if (!course) { await editMessageText(chatId, messageId, "Курс не найден."); return; }
+
+      const themes = ["default", "dark", "corporate"];
+      const currentIdx = themes.indexOf(course.scormTheme || "default");
+      const nextTheme = themes[(currentIdx + 1) % themes.length];
+      course.scormTheme = nextTheme;
+
+      const { saveCourse } = await import("../../../lib/course-store.js");
+      await saveCourse(course);
+
+      const themeLabels = { default: "☀️ Классика", dark: "🌙 Тёмная", corporate: "🏢 Корпоративная" };
+      const { courseActionsKeyboard } = await import("../ui/keyboards.mjs");
+      await editMessageText(chatId, messageId,
+        `🎨 Тема: <b>${themeLabels[nextTheme]}</b>\n\nСкачайте ZIP заново для применения.`,
+        courseActionsKeyboard(courseId, nextTheme)
+      );
+    } catch (e) {
+      await sendMessage(chatId, `❌ Ошибка: ${escapeMarkdown(e?.message || "unknown")}`);
+    }
+    return;
+  }
+
+  // Auto-test: generate quiz from course text via LLM
+  if (data.startsWith("autotest_")) {
+    const courseId = data.slice(9);
+    try {
+      const course = await getCourse(courseId);
+      if (!course) { await editMessageText(chatId, messageId, "Курс не найден."); return; }
+
+      await editMessageText(chatId, messageId, "🧠 Генерирую тест по тексту курса...");
+
+      // Collect all text from course
+      const allText = course.modules.map(m =>
+        m.sections.map(s =>
+          s.scos.map(sco =>
+            sco.screens.map(sc =>
+              sc.blocks.filter(b => b.type === "text").map(b => b.text).join("\n")
+            ).join("\n")
+          ).join("\n")
+        ).join("\n")
+      ).join("\n").slice(0, 8000);
+
+      // Use the same provider config as course generation (cloud or local Ollama)
+      const { resolveGenerationConfig: resolveGenCfg } = await import("../generation/executor.mjs");
+      const { createDefaultGenerateInput } = await import("../../../lib/course-defaults.js");
+      const defaults = createDefaultGenerateInput();
+      const genConfig = resolveGenCfg(defaults, chatId);
+
+      const baseUrl = genConfig.baseUrl || "http://127.0.0.1:11434";
+      const model = genConfig.model || "llama3";
+      const apiKey = genConfig.apiKey || "";
+      const isOllama = !genConfig.provider || genConfig.provider === "ollama";
+
+      const prompt = `Ты — преподаватель. На основе текста ниже создай 5 тестовых вопросов с 4 вариантами ответа.
+
+Формат ответа — строго JSON массив:
+[{"prompt":"вопрос","options":["A","B","C","D"],"correctIndex":0}]
+
+Текст курса:
+${allText}
+
+Ответь ТОЛЬКО JSON массивом, без пояснений.`;
+
+      const endpoint = isOllama
+        ? `${baseUrl}/api/chat`
+        : `${baseUrl}/chat/completions`;
+
+      const fetchBody = isOllama
+        ? { model, messages: [{ role: "user", content: prompt }], stream: false }
+        : { model, messages: [{ role: "user", content: prompt }], temperature: 0.3, max_tokens: 2000 };
+
+      const headers = { "Content-Type": "application/json" };
+      if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+
+      const llmResponse = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(fetchBody)
+      });
+
+      if (!llmResponse.ok) {
+        const errText = await llmResponse.text().catch(() => "");
+        throw new Error(`LLM API ошибка ${llmResponse.status}: ${errText.slice(0, 200)}`);
+      }
+
+      const llmJson = await llmResponse.json();
+      const llmResult = isOllama
+        ? (llmJson?.message?.content || "")
+        : (llmJson?.choices?.[0]?.message?.content || "");
+
+      const jsonMatch = llmResult.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) throw new Error("LLM не вернул JSON с вопросами");
+
+      const questions = JSON.parse(jsonMatch[0]);
+      if (!Array.isArray(questions) || questions.length === 0) throw new Error("Пустой массив вопросов");
+
+      // Add test to course
+      course.finalTest = {
+        enabled: true,
+        title: `${course.title} — Тест`,
+        attemptsLimit: 3,
+        passingScore: 80,
+        questions: questions.map((q, i) => ({
+          prompt: q.prompt || q.text || `Вопрос ${i + 1}`,
+          options: Array.isArray(q.options) ? q.options : [],
+          correctOptionIndex: Number.isFinite(q.correctIndex) ? q.correctIndex : 0
+        }))
+      };
+
+      const { saveCourse } = await import("../../../lib/course-store.js");
+      await saveCourse(course);
+
+      const qList = questions.map((q, i) => `${i + 1}. ${escapeMarkdown((q.prompt || "").slice(0, 80))}`).join("\n");
+      const { courseActionsKeyboard } = await import("../ui/keyboards.mjs");
+      await sendMessage(chatId,
+        `✅ <b>Тест создан (${questions.length} вопросов):</b>\n\n${qList}\n\n` +
+        `Скачайте ZIP — тест будет включён в SCORM.`,
+        courseActionsKeyboard(courseId, course.scormTheme)
+      );
+    } catch (e) {
+      console.error(`[bot] autotest error: ${e?.message || e}`);
+      await sendMessage(chatId,
+        `❌ Ошибка генерации теста: ${escapeMarkdown(e?.message || "unknown")}`
+      );
+    }
     return;
   }
 

@@ -11,7 +11,7 @@ import { handleMyCourses } from "../commands/my-courses.mjs";
 import { handleStatus } from "../commands/settings.mjs";
 import { handleAdmin } from "../commands/admin.mjs";
 import { handleCreateCommand, parseCreateArgs } from "../generation/executor.mjs";
-import { getChamiloFlow, handleChamiloFlowStep } from "../commands/chamilo.mjs";
+import { getChamiloFlow, handleChamiloFlowStep, handleChamiloSettings } from "../commands/chamilo.mjs";
 import prisma from "../../../lib/db.js";
 
 function parseCommand(rawText) {
@@ -131,6 +131,7 @@ export async function handleMessage(message) {
   if (command === "/clear_materials") { await handleClearMaterials(chatId); return; }
   if (command === "/my_courses") { await handleMyCourses(chatId); return; }
   if (command === "/admin") { await handleAdmin(chatId, args); return; }
+  if (command === "/chamilo_settings" || command === "/chamilo") { await handleChamiloSettings(chatId); return; }
 
   if (command === "/create") {
     const parsed = parseCreateArgs(args, "/create");

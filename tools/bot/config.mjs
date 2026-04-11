@@ -42,6 +42,7 @@ export const MAX_UPLOADS_PER_HOUR = clampInt(process.env.TELEGRAM_BOT_MAX_UPLOAD
 export const GENERATION_PROVIDER = normalizeGenerationProvider(process.env.TELEGRAM_BOT_GENERATION_PROVIDER);
 export const GENERATION_MODEL = `${process.env.TELEGRAM_BOT_GENERATION_MODEL || ""}`.trim();
 export const GENERATION_BASE_URL = `${process.env.TELEGRAM_BOT_GENERATION_BASE_URL || ""}`.trim();
+export const GENERATION_API_KEY = `${process.env.TELEGRAM_BOT_GENERATION_API_KEY || ""}`.trim();
 export const GENERATION_TEMPERATURE = clampFloat(process.env.TELEGRAM_BOT_GENERATION_TEMPERATURE, null, 0, 1);
 
 export const EMBEDDING_PROVIDER = normalizeEmbeddingProvider(process.env.TELEGRAM_BOT_EMBEDDING_PROVIDER);

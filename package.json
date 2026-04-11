@@ -13,13 +13,9 @@
     "dev:clean": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && next dev"
   },
   "dependencies": {
-    "@langchain/core": "^1.1.31",
-    "@langchain/qdrant": "^1.0.1",
     "@prisma/adapter-better-sqlite3": "^7.5.0",
     "@prisma/client": "^7.5.0",
-    "@qdrant/js-client-rest": "^1.17.0",
     "better-sqlite3": "^12.8.0",
-    "mammoth": "^1.11.0",
     "next": "^15.2.0",
     "nodemailer": "^8.0.2",
     "pdfkit": "^0.17.2",

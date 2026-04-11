@@ -1,15 +1,13 @@
-import { sendMessage } from "../api.mjs";
+import { sendMessage, downloadTelegramFile } from "../api.mjs";
 import { escapeMarkdown, formatFileSize, MAX_UPLOAD_SIZE_BYTES, MAX_UPLOAD_SIZE_MB, MAX_UPLOADS_PER_HOUR } from "../config.mjs";
-import { getChatSession, upsertSessionFile, attachMaterialToSession, clearSessionMaterials, saveState, checkRateLimit } from "../state.mjs";
-import { downloadTelegramFile } from "../api.mjs";
+import { getChatSession, attachMaterialToSession, clearSessionMaterials, saveState, checkRateLimit, upsertSessionFile } from "../state.mjs";
 import { afterUploadKeyboard } from "../ui/keyboards.mjs";
 import { t } from "../i18n/index.mjs";
-import { isSupportedTextMaterial } from "../../../lib/document-parser.js";
-import { indexMaterialDocument } from "../../../lib/material-indexer.js";
-import { saveUploadedMaterial } from "../../../lib/material-store.js";
-import { createDefaultGenerateInput } from "../../../lib/course-defaults.js";
-import { resolveEmbeddingConfig } from "../generation/executor.mjs";
+import { uploadDocumentFromBuffer } from "../../../lib/rag-llm-client.js";
+import { writeFile, mkdir } from "node:fs/promises";
+import path from "node:path";
 
+const UPLOADS_DIR = path.join(process.cwd(), ".data", "telegram-bot", "uploads");
 
 export async function handleDocumentUpload(chatId, message) {
   const document = message?.document;
@@ -20,11 +18,9 @@ export async function handleDocumentUpload(chatId, message) {
   const mimeType = `${document.mime_type || ""}`.trim();
   const fileSize = Math.max(0, Number(document.file_size) || 0);
 
-  if (!fileId) { await sendMessage(chatId, "Telegram не передал file_id."); return true; }
-
-  if (!isSupportedTextMaterial({ fileName, mimeType })) {
-    await sendMessage(chatId, t("uploadUnsupported"));
-    return true;
+  if (!fileId) { 
+    await sendMessage(chatId, "Telegram не передал file_id."); 
+    return true; 
   }
 
   if (fileSize > MAX_UPLOAD_SIZE_BYTES) {
@@ -56,37 +52,42 @@ export async function handleDocumentUpload(chatId, message) {
   try {
     await sendMessage(chatId, t("uploadReceived", escapeMarkdown(fileName), formatFileSize(fileSize)));
     const { buffer } = await downloadTelegramFile(fileId);
-    const material = await saveUploadedMaterial({ fileName, mimeType, buffer });
+    
+    // Save local copy for potential DOCX/PDF conversion
+    await mkdir(UPLOADS_DIR, { recursive: true });
+    const localFilePath = path.join(UPLOADS_DIR, `${Date.now()}_${fileName}`);
+    await writeFile(localFilePath, buffer);
+    
+    // Upload to RAG-LLM service for indexing
+    const result = await uploadDocumentFromBuffer(buffer, fileName, { collection: "default" });
 
-    await sendMessage(chatId, t("uploadSaved", escapeMarkdown(material.id)));
-
-    const defaults = createDefaultGenerateInput();
-    const embedding = resolveEmbeddingConfig(defaults);
-    const result = await indexMaterialDocument(material.id, { embedding });
-
-    if (!result?.ok) {
-      upsertSessionFile(chatId, {
-        materialId: material.id, telegramFileId: fileId, fileName: material.fileName,
-        mimeType: material.mimeType, size: material.size, status: "failed",
-        message: `${result?.message || "Indexing failed."}`
-      });
-      await saveState();
-      await sendMessage(chatId, t("uploadFailed", escapeMarkdown(material.fileName), escapeMarkdown(result?.message || "unknown")));
+    if (!result.ok) {
+      await sendMessage(chatId, t("uploadFailed", escapeMarkdown(fileName), escapeMarkdown(result?.message || "unknown")));
       return true;
     }
 
-    attachMaterialToSession(chatId, material.id);
+    // Store reference in session with local file path
+    const materialId = result.documentId;
+    attachMaterialToSession(chatId, materialId);
     upsertSessionFile(chatId, {
-      materialId: material.id, telegramFileId: fileId, fileName: material.fileName,
-      mimeType: material.mimeType, size: material.size, status: "indexed", message: ""
+      materialId: materialId,
+      telegramFileId: fileId,
+      fileName: fileName,
+      mimeType: mimeType,
+      size: fileSize,
+      filePath: localFilePath,
+      status: "indexed"
     });
+    
     await saveState();
 
     const session = getChatSession(chatId, false);
     const count = session?.materialIds?.length || 0;
     await sendMessage(chatId,
-      `${t("uploadIndexed", escapeMarkdown(material.fileName), result.chunksCount ?? 0, count)}\n${t("uploadAfter")}`,
-      afterUploadKeyboard(material.fileName)
+      `✅ Файл «<b>${escapeMarkdown(fileName)}</b>» проиндексирован (${result.chunksCount || 0} чанков).\n\n` +
+      `📚 Всего материалов: ${count}\n\n` +
+      `Теперь вы можете использовать эти материалы при создании курса с помощью команды /create`,
+      afterUploadKeyboard(fileName)
     );
     return true;
   } catch (error) {
@@ -97,23 +98,24 @@ export async function handleDocumentUpload(chatId, message) {
 
 export async function handleMaterials(chatId) {
   const session = getChatSession(chatId, false);
-  if (!session || session.files.length === 0) {
-    await sendMessage(chatId, t("materialsEmpty"));
+  if (!session || !session.materialIds || session.materialIds.length === 0) {
+    await sendMessage(chatId, "📚 У вас пока нет загруженных материалов.\n\nОтправьте документ в чат, чтобы добавить его для RAG.");
     return;
   }
-  const lines = session.files.slice(-15).reverse().map((f, i) => {
-    const mark = f.status === "indexed" ? "✅" : f.status === "failed" ? "❌" : "⏳";
-    return `${i + 1}. ${mark} ${escapeMarkdown(f.fileName)} (${formatFileSize(f.size)})`;
+  
+  const lines = session.materialIds.slice(-15).reverse().map((id, i) => {
+    return `${i + 1}. 📄 ${escapeMarkdown(id.slice(0, 30))}...`;
   });
-  await sendMessage(chatId, `📚 Материалов: ${session.materialIds.length}\n\n${lines.join("\n")}`);
+  
+  await sendMessage(chatId, `📚 Материалов: ${session.materialIds.length}\n\n${lines.join("\n")}\n\nЭти материалы будут использоваться при создании курса.`);
 }
 
 export async function handleClearMaterials(chatId) {
   const cleared = clearSessionMaterials(chatId);
   if (cleared) {
     await saveState();
-    await sendMessage(chatId, t("materialsCleared"));
+    await sendMessage(chatId, "🗑 Все материалы удалены из сессии.");
   } else {
-    await sendMessage(chatId, t("materialsNone"));
+    await sendMessage(chatId, "📚 Нет материалов для очистки.");
   }
 }

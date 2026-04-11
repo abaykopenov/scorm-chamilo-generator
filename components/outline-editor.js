@@ -43,7 +43,7 @@ export function OutlineEditor({ outline, onChange, onCancel, onConfirm }) {
 
   const handleConfirm = () => {
     onChange(localOutline);
-    onConfirm();
+    onConfirm(localOutline);
   };
 
   if (!localOutline || !Array.isArray(localOutline.modules)) {
