@@ -26,3 +26,6 @@ dev.db
 .venv/
 *.pdf
 .data/
+.data/
+node_modules/
+.next/
